@@ -23,7 +23,7 @@ When the answer is not yet, the page works out the smallest extra yearly income,
 
 ## Phones
 
-The layout adapts to the screen by itself. On a narrow screen the tabs move to a bar at the bottom, tables turn into cards, and buttons get bigger on touch screens. No device sniffing is used, so it also works on tablets and when a phone is turned sideways.
+The phone layout is only used on small touch screens, where touch is the main way of pointing. There the tabs move to a bar at the bottom, tables turn into cards, and buttons get bigger. Laptops and PCs always get the full layout, even in a narrow or split-screen window, where the page simply wraps and the tables scroll.
 
 ## Tests
 

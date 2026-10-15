@@ -124,6 +124,15 @@ const t = async (n, f) => { try { await f(); pass++; } catch (e) { fail++; conso
     assert.strictEqual(await ph.evaluate(() => getComputedStyle(document.querySelector('#stress thead')).display), 'none');
     assert(await ph.evaluate(() => document.querySelector('main').getBoundingClientRect().bottom > 0));
     await pctx.close(); });
+  await t('a narrow window on a laptop or PC keeps the full layout (mobile view is for touch devices only)', async () => {
+    const nctx = await b.newContext({viewport:{width:390,height:800}}), nw = await nctx.newPage();     // mouse and keyboard, small window
+    await nw.goto(url + '#plan'); await nw.evaluate(() => localStorage.clear()); await nw.reload(); await nw.waitForTimeout(200);
+    assert.strictEqual(await nw.evaluate(() => matchMedia('(pointer:coarse)').matches), false);
+    assert.notStrictEqual(await nw.evaluate(() => getComputedStyle(document.querySelector('#tabs')).position), 'fixed', 'tab bar is not pinned to the bottom');
+    assert.strictEqual(await nw.evaluate(() => getComputedStyle(document.querySelector('#stress thead')).display), 'table-header-group', 'real table, not cards');
+    for (const h of ['plan','pot','whatif','lump','numbers']){ await nw.goto(url + '#' + h); await nw.waitForTimeout(120);
+      assert.strictEqual(await nw.evaluate('document.documentElement.scrollWidth - window.innerWidth'), 0, 'no sideways scroll on '+h+' in a narrow desktop window'); }
+    await nctx.close(); });
   await t('on a desktop: normal tab bar at the top and real tables', async () => {
     await go('plan'); const box = await pg.locator('#tabs').boundingBox(); assert(box.y < 200, 'tabs at the top');
     assert.strictEqual(await pg.evaluate(() => getComputedStyle(document.querySelector('#stress thead')).display), 'table-header-group'); });

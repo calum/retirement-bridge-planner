@@ -140,8 +140,9 @@ details.gloss summary{font-weight:700;cursor:pointer;padding:6px 0}
 details.gloss p{padding:4px 0 6px}
 details.how summary{font-weight:700;cursor:pointer}
 @media (pointer:coarse){button,.seg button,.btn{min-height:48px} input[type=range]{height:44px} .inp input,.field>input{padding:13px 12px}}
-/* phones: thumb-friendly bottom tab bar, cards instead of wide tables */
-@media (max-width:640px){
+/* phones and other small touch screens only (touch as the main input): thumb-friendly bottom tab bar, cards instead of wide tables.
+   A narrow desktop window keeps the full layout. */
+@media (max-width:640px) and (pointer:coarse){
   body{font-size:17px}
   .bar .wrap{padding-block:8px 6px}
   .brand span{display:none}
