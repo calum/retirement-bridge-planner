@@ -4,7 +4,8 @@
   "private": true,
   "description": "Plain-English retirement planner for a couple",
   "scripts": {
-    "test": "node tests/engine.test.js",
+    "test": "node tests/engine.test.js && node tests/privacy.test.js",
+    "test:privacy": "node tests/privacy.test.js",
     "test:ui": "node tests/ui.smoke.js"
   }
 }

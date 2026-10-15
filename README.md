@@ -9,6 +9,23 @@ A plain-English retirement planner for a couple. It gives one clear answer to "c
 
 This is a planning aid, not regulated financial advice.
 
+## Privacy
+
+Nothing you type is ever sent anywhere. There is no server, no account, no analytics and no cookies. The numbers are saved only in the browser's own storage on the device being used, so they are still there next time, and a "Delete my numbers" button removes them.
+
+This is enforced, not just promised:
+
+- The page contains no web addresses at all: no outside fonts, scripts, images or links to load, and no code that can send data.
+- The standalone page also carries a Content Security Policy that makes the browser itself refuse any outside connection.
+- `npm run test:privacy` scans the source for anything that could leak data. It was checked by injecting a fetch call, a beacon, an outside font, a cookie and an image ping: each one fails the test.
+- The browser tests record every network request across the whole run and fail if there is any besides local files. They also confirm the app works with the internet switched off.
+
+The only thing that travels over the internet is the page itself arriving, as with any website. The host (GitHub Pages) can see that the page was loaded, but never the numbers.
+
+## Guided tour
+
+The first time the page is opened with nothing saved, it starts a guided tour: one plain question per screen (dates of birth, pensions, State Pensions, spending, savings, lump sum, Marriage Allowance), with examples, "where do I find this?" help and live feedback such as the State Pension age. It ends with the answer. It can be skipped or restarted from the "Guided tour" link at the top of every page.
+
 ## What "safe" means
 
 The plan page opens with a straight answer: **yes**, **close but not safe yet**, or **not yet**. A plan counts as safe only if it still works after all of this:
@@ -27,7 +44,7 @@ The phone layout is only used on small touch screens, where touch is the main wa
 
 ## Tests
 
-The calculations are checked in layers. Run `npm test` (plain Node, nothing to install).
+The calculations are checked in layers. Run `npm test` (plain Node, nothing to install). It runs the maths checks and the privacy checks.
 
 1. **Hand-calculated figures.** Tax, income, ISA, savings and Marriage Allowance worked out on paper.
 2. **An independent calculator.** A separate year-by-year implementation, compared with the monthly engine across 11 scenarios.

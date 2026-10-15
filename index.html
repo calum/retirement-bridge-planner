@@ -1,12 +1,10 @@
 <!doctype html>
 <html lang="en">
 <meta charset="utf-8">
+<meta http-equiv="Content-Security-Policy" content="default-src 'none'; style-src 'unsafe-inline'; script-src 'unsafe-inline'; connect-src 'none'; form-action 'none'; base-uri 'none'">
 <title>Retirement Bridge Planner</title>
 <meta name="claude:viewport-fit-sides" content="cover">
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
-<link rel="preconnect" href="https://fonts.googleapis.com">
-<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Atkinson+Hyperlegible:wght@400;700&family=Fraunces:opsz,wght@9..144,600;9..144,700&display=swap">
 <style>
 /* Layout concept: one calm column of large-type cards; a sticky bar holds the page tabs and the
    "Essentials / Ideal" switch. Every chart carries a one-sentence headline. Built for a couple in their 60s. */
@@ -16,8 +14,8 @@
   --good:#17703f; --good-soft:#dcf3e5; --warn:#8f5700; --warn-soft:#fbecc9; --bad:#b3261e; --bad-soft:#fbe0dd;
   --c1:#2a78d6; --c2:#eb6834; --c3:#1baf7a; --c4:#eda100; --c5:#e87ba4; --c7:#6250d6;
   --shadow:0 1px 2px rgba(17,34,45,.06),0 4px 14px rgba(17,34,45,.05);
-  --font-body:"Atkinson Hyperlegible",system-ui,-apple-system,"Segoe UI",Roboto,sans-serif;
-  --font-display:"Fraunces",Georgia,"Times New Roman",serif;
+  --font-body:system-ui,-apple-system,"Segoe UI",Roboto,"Helvetica Neue",Arial,sans-serif;
+  --font-display:Georgia,"Iowan Old Style","Times New Roman",serif;
 }
 @media (prefers-color-scheme: dark){:root:not([data-theme="light"]){
   --bg:#0d171d; --surface:#15232b; --surface-2:#1d2f39; --ink:#e9f0f4; --muted:#a8bac6; --line:#2a3f4b;
@@ -120,6 +118,27 @@ th{color:var(--muted);font-weight:700;font-size:.88rem;white-space:normal;vertic
 .check{display:flex;gap:12px;align-items:flex-start;font-weight:700;cursor:pointer}
 .check input{width:24px;height:24px;flex:none;accent-color:var(--accent);margin-top:2px}
 .sw{display:inline-block;width:12px;height:12px;border-radius:3px;margin-right:6px}
+/* tour, privacy, footer */
+.tourlink{font-weight:700;font-size:.95rem}
+.foot{padding-block:0 40px;color:var(--muted);font-size:.95rem}
+#tourH:focus,#tourH:focus-visible{outline:none}
+.progress{height:12px;border-radius:999px;background:var(--surface-2);overflow:hidden}
+.progress i{display:block;height:100%;background:var(--accent);border-radius:999px;transition:width .2s}
+.tourcard{gap:16px}
+.tourcard .inp input,.tourcard .field>input{font-size:1.4rem;padding:14px 12px}
+.tourcard label{font-size:1.1rem}
+.tournav{display:flex;gap:12px;flex-wrap:wrap}
+.tournav .btn{flex:1 1 140px}
+.btn.big{padding:14px 22px;font-size:1.15rem;min-height:54px}
+.chips{display:flex;flex-wrap:wrap;gap:10px}
+.chip{border:2px solid var(--accent);background:transparent;color:var(--accent);border-radius:999px;padding:8px 16px;font-weight:700;cursor:pointer}
+.choice{border:2px solid var(--accent);background:var(--surface);color:var(--accent);border-radius:12px;padding:14px 26px;font:700 1.15rem var(--font-body);cursor:pointer;min-width:120px}
+.choice[aria-pressed="true"]{background:var(--accent);color:var(--accent-ink)}
+.linkbtn{background:none;border:0;padding:6px 0;color:var(--accent);text-decoration:underline;cursor:pointer;font-size:.95rem}
+ol.steps{margin:0;padding-left:1.3em;display:flex;flex-direction:column;gap:12px}
+.bigtext{font-size:1.25rem;line-height:1.45}
+.safebox{border-left:10px solid var(--good);border-radius:12px;background:var(--good-soft);padding:18px 20px;display:flex;flex-direction:column;gap:10px}
+.safebox h2{font-size:1.5rem}
 /* the one big answer */
 .answer{border-width:2px;border-left-width:10px;gap:12px}
 .answer.good{border-color:var(--good)} .answer.warn{border-color:var(--warn)} .answer.bad{border-color:var(--bad)}
@@ -149,7 +168,8 @@ details.how summary{font-weight:700;cursor:pointer}
   .tabs{position:fixed;left:0;right:0;bottom:0;z-index:30;display:grid;grid-template-columns:repeat(5,1fr);gap:0;margin:0;padding:0 env(safe-area-inset-right,0px) env(safe-area-inset-bottom,0px) env(safe-area-inset-left,0px);background:var(--surface);border-top:1px solid var(--line);overflow:visible}
   .tabs a{display:flex;align-items:center;justify-content:center;min-height:58px;padding:8px 2px;text-align:center;font-size:.8rem;line-height:1.15;white-space:normal;border-bottom:0;border-top:4px solid transparent}
   .tabs a[aria-current="page"]{border-top-color:var(--accent);color:var(--ink)}
-  main{padding-block:16px calc(92px + env(safe-area-inset-bottom,0px))}
+  main{padding-block:16px 16px}
+  .foot{padding-bottom:calc(88px + env(safe-area-inset-bottom,0px))}
   #viewLabel{display:none}
   .subbar .wrap{padding-block:6px;gap:8px}
   .seg button{padding:8px 12px}
@@ -170,7 +190,7 @@ details.how summary{font-weight:700;cursor:pointer}
 
 <div class="bar">
   <div class="wrap">
-    <div class="brand"><b>Retirement Bridge Planner</b><span id="brandSub"></span></div>
+    <div class="brand"><b>Retirement Bridge Planner</b><span id="brandSub"></span><a class="tourlink" href="#tour">Guided tour</a></div>
     <nav class="tabs" id="tabs" aria-label="Pages">
       <a href="#plan" data-p="plan">Your plan</a>
       <a href="#pot" data-p="pot">Savings</a>
@@ -191,6 +211,7 @@ details.how summary{font-weight:700;cursor:pointer}
   </div>
 </div>
 <div class="wrap"><main id="main"></main></div>
+<footer class="wrap foot"><p><b>Private.</b> The numbers you type stay on this device and are never sent anywhere. <a href="#privacy">How this works</a></p></footer>
 <div id="tip" role="tooltip"></div>
 
 <script>
@@ -232,7 +253,7 @@ function defaultState(){
     ess:1500, ideal:2000,
     cash:20000, lump:20000, emergency:2000, swr:4, invest:true, drawdown:true,
     inflation:0, cashReal:0, growth:3, marriage:false, payLag:0,
-    extra2:0, work:[0,0], view:'e'
+    extra2:0, work:[0,0], view:'e', tourSeen:false
   };
 }
 
@@ -424,9 +445,11 @@ function ageText(months){ const y = Math.floor(months/12), m = Math.round(months
 const S = {}; // state
 const KEY = 'retirement-bridge-v1';
 function save(){ try{ localStorage.setItem(KEY, JSON.stringify(S)); }catch(e){} }
+function wipe(){ try{ localStorage.removeItem(KEY); }catch(e){} }
 function load(){
   const d = defaultState(); let saved = null;
   try{ saved = JSON.parse(localStorage.getItem(KEY)||'null'); }catch(e){}
+  if (saved && saved.tourSeen === undefined) saved.tourSeen = true;   // anyone with saved numbers has already started
   if (saved && saved.invest !== undefined && saved.drawdown === undefined) saved.drawdown = true;   // older saves always took an income
   Object.assign(S, d, saved||{});
   if (!S.dobConfirmed) S.dob = d.dob;
@@ -599,7 +622,7 @@ const pillHTML = v => `<span class="pill ${v.cls}"><span aria-hidden="true">${v.
 function spaLine(sim){
   return [0,1].map(i => `${nmx(i)} can claim State Pension from age <b>${ageText(sim.spaAge[i])}</b> (${monthName(sim.spaIdx[i])})`).join('. ') + '.';
 }
-const dobBanner = () => S.dobConfirmed ? '' : `<div class="note"><b>Please enter your real dates of birth.</b> We have used example dates for now (both people 60 today). The age you can claim State Pension depends on your date of birth, and it changes the answer a lot. <a href="#numbers">Go to Your numbers</a>.</div>`;
+const dobBanner = () => S.dobConfirmed ? '' : `<div class="note"><b>Please enter your real dates of birth.</b> This app has used example dates for now (both people 60 today). The age you can claim State Pension depends on your date of birth, and it changes the answer a lot. <a href="#numbers">Go to Your numbers</a>.</div>`;
 
 /* ---------- "can you afford to retire?" ---------- */
 const netGain = (person, extra) => { const w = (S.work||[0,0]).slice(); w[person] += extra; return simulate({...S, work:w}).months[0].income - simulate(S).months[0].income; };
@@ -641,7 +664,7 @@ function answerHTML(){
   else if (rE.safe){ cls='good'; mark='✓'; head='Yes, you can afford to retire on essentials.';
     lead = `Your essential spending of ${money(S.ess)} a month is covered, with a safety margin and an emergency fund of ${money(rE.reserve)} kept untouched. Your ideal lifestyle of ${money(S.ideal)} a month is not safe yet.`; }
   else if (rE.level === 'tight'){ cls='warn'; mark='!'; head='You are close, but not safe yet.';
-    lead = `On paper your essential spending is covered. But there is not enough room if bills go up or payments are late, so we cannot call it safe.`; }
+    lead = `On paper your essential spending is covered. But there is not enough room if bills go up or payments are late, so this app cannot call it safe.`; }
   else { cls='bad'; mark='✕'; head='Not yet. Your money would run short.';
     lead = `Retiring at age ${startAge} on essential spending of ${money(S.ess)} a month would leave you short. Here is what would change that.`; }
   const targets = [['e', rE], ['i', rI]].filter(([k, r]) => !r.safe);
@@ -651,12 +674,12 @@ function answerHTML(){
       <div class="lines">${rowFor('e', rE)}${rowFor('i', rI)}</div>
       ${work.length ? `<div class="info">This plan already includes extra earnings: ${work.join(' and ')}, until State Pension starts. <button type="button" class="btn ghost small" data-clearwork="1">Remove them</button></div>` : ''}
       ${targets.length ? `<div><h2>You could safely retire if…</h2><p class="small" style="margin:6px 0 10px">Extra income can come from part-time work, a private pension or anything else that is taxed as income. It stops when that person's State Pension starts.</p>${targets.map(([k, r]) => optionsFor(k, r)).join('')}</div>` : ''}
-      <details class="how"><summary>How we decide if it is safe</summary>
+      <details class="how"><summary>How this app decides if it is safe</summary>
         <ul class="tidy" style="margin-top:10px">
-          <li>We keep an <b>emergency fund</b> of 6 months of essential spending (${money(rE.reserve)}). Your savings must never go below it.</li>
-          <li>We add a <b>safety margin</b>. We check the plan again with your spending 5% higher, your first pension payments a month late, and prices rising 2.5% a year.</li>
+          <li>This app keeps an <b>emergency fund</b> of 6 months of essential spending (${money(rE.reserve)}). Your savings must never go below it.</li>
+          <li>This app adds a <b>safety margin</b>. It checks the plan again with your spending 5% higher, your first pension payments a month late, and prices rising 2.5% a year.</li>
           <li>Your money coming in after the State Pensions start must also cover what you spend. Otherwise the savings would run out later.</li>
-          <li>If the plan passes all of that, we call it <b>safe</b>. This is a careful guide, not a promise, and it cannot see future surprises such as big repairs or care costs.</li>
+          <li>If the plan passes all of that, it is called <b>safe</b>. This is a careful guide, not a promise, and it cannot see future surprises such as big repairs or care costs.</li>
           <li>For free, impartial help, contact MoneyHelper or Pension Wise (both government-backed) before you decide.</li></ul></details>
     </section>`;
 }
@@ -666,9 +689,9 @@ const GLOSSARY = [
   ['Marriage Allowance', 'If one of you pays no tax and the other pays the basic 20% rate, the one who pays no tax can pass £1,260 of their allowance to the other. That saves up to £252 a year. You have to claim it from HMRC.'],
   ['Lump sum', 'A one-off, tax-free payment from a workplace pension when you start taking it.'],
   ['Investment (Stocks & Shares ISA)', 'Money put into shares and funds instead of the bank. Growth and income are tax-free in an ISA. It can go down as well as up.'],
-  ['Emergency fund', 'Money kept aside for surprises, such as a broken boiler or car repair. We keep 6 months of essential spending untouched.'],
-  ['Safety margin', 'We test your plan with spending 5% higher, first pension payments a month late, and prices rising 2.5% a year. If it still works, we call it safe.'],
-  ['Today\'s money', 'Every amount is shown as what it would buy today. That way we do not have to guess future prices.'],
+  ['Emergency fund', 'Money kept aside for surprises, such as a broken boiler or car repair. This app keeps 6 months of essential spending untouched.'],
+  ['Safety margin', 'This app tests your plan with spending 5% higher, first pension payments a month late, and prices rising 2.5% a year. If it still works, the plan is called safe.'],
+  ['Today\'s money', 'Every amount is shown as what it would buy today. That way there is no need to guess future prices.'],
   ['National Insurance', 'A payment on earnings from work (8% on earnings above £12,570 a year). You stop paying it when you reach State Pension age. It is not charged on pensions.']
 ];
 const glossaryHTML = () => GLOSSARY.map(g => `<details class="gloss"><summary>${g[0]}</summary><p>${g[1]}</p></details>`).join('');
@@ -713,7 +736,7 @@ pages.plan = {
       ['Prices go up 2.5% a year (the tax-free allowance stays the same until 2031)', {inflation:Math.max(S.inflation, 2.5)}],
       ['You spend 10% more than planned', {ess:S.ess*1.1, ideal:S.ideal*1.1}],
       ['All three at once', {payLag:Math.max(S.payLag||0, 1), inflation:Math.max(S.inflation, 2.5), ess:S.ess*1.1, ideal:S.ideal*1.1}]];
-    $('#stressLead').textContent = `We tested your plan against things that often go wrong, for ${scName(sc)}. A red mark means that problem would leave you short.`;
+    $('#stressLead').textContent = `This app tested your plan against things that often go wrong, for ${scName(sc)}. A red mark means that problem would leave you short.`;
     $('#stress').innerHTML = `<table><thead><tr><th>If this happens…</th><th>Lowest your savings fall to</th><th>Result</th></tr></thead><tbody>${tests.map(([lab, o]) => { const st = {...S, ...o}, vv = verdict(simulate(st), sc, st); return `<tr><td style="white-space:normal">${lab}</td><td class="${vv.s.min<0?'neg':''}"><b>${money(vv.s.min)}</b></td><td>${pillHTML(vv)}</td></tr>`; }).join('')}</tbody></table>`;
     const f = [];
     f.push(spaLine(sim) + ' Remember to claim it. It does not start by itself.');
@@ -723,8 +746,8 @@ pages.plan = {
     if (!S.marriage){ const ma = simulate({...S, marriage:true}); if (ma.marriageTotal >= 1) f.push(`<b>Marriage Allowance</b> could save you about <b>${money(ma.marriageTotal)}</b> in tax by age ${endLbl(ma)}. It lets one of you pass part of your tax-free allowance to the other. Turn it on under <a href="#whatif">What if?</a>.`); }
     else f.push(`Marriage Allowance is switched on. It saves you about ${money(sim.marriageTotal)} in tax over this plan.`);
     if (S.invest && s.min < 0){ const val = sim.isaPot[Math.floor(s.minM/12)];
-      if (val > 0) f.push(`If your savings run short, your investment (about <b>${money(val)}</b> at that point) could ${val >= -s.min ? 'cover' : 'cover part of'} the ${money(-s.min)} gap if you sold some. We keep the investment separate, so it is not counted as savings here. See <a href="#lump">Lump sum</a>.`); }
-    f.push(`All amounts are in today's money, so £1,000 means what £1,000 buys today. We assume your pensions go up with prices.`);
+      if (val > 0) f.push(`If your savings run short, your investment (about <b>${money(val)}</b> at that point) could ${val >= -s.min ? 'cover' : 'cover part of'} the ${money(-s.min)} gap if you sold some. The investment is kept separate, so it is not counted as savings here. See <a href="#lump">Lump sum</a>.`); }
+    f.push(`All amounts are in today's money, so £1,000 means what £1,000 buys today. This app assumes your pensions go up with prices.`);
     $('#facts').innerHTML = f.map(t => `<li>${t}</li>`).join('');
   }
 };
@@ -763,7 +786,7 @@ pages.whatif = {
         <input type="range" id="x2" min="0" max="12570" step="50"><span class="small" id="x2m"></span></div>
       <div class="sliderrow"><div class="top"><b style="font-size:1.1rem">What happens to the lump sum?</b></div>${modeSeg()}</div>
     </section>
-    <section class="card"><label class="check"><input type="checkbox" data-flag="marriage"> Use Marriage Allowance (we are married or in a civil partnership)</label><p id="maTxt"></p></section>
+    <section class="card"><label class="check"><input type="checkbox" data-flag="marriage"> Use Marriage Allowance (you are married or in a civil partnership)</label><p id="maTxt"></p></section>
     <section class="card"><h2 id="wH"></h2><div id="wChart"></div></section>
     <div class="grid3" id="wK"></div>
     <section class="card"><h2>How much extra would make it safe?</h2><p class="lead" id="needTxt"></p><div class="tablewrap" id="need"></div></section>`; },
@@ -794,7 +817,7 @@ pages.whatif = {
       : `Saves about <b>${money(m0)}</b> a year before State Pension, <b>${money(m1)}</b> a year after, and <b>${money(ma.marriageTotal)}</b> in total up to age ${endLbl(ma)}. The one with the lower income claims it from HMRC, and it can usually be backdated.`;
     const cell = (p, sc2) => { const x = neededWork(S, p, sc2); return x === 0 ? 'Already safe' : x === null ? 'Not enough on its own' : `${money(x)} a year (about ${money(netGain(p, x))} a month after tax)`; };
     $('#need').innerHTML = `<table><thead><tr><th>If this person earns more, until their State Pension starts…</th><th>To be safe on essentials</th><th>To be safe on your ideal lifestyle</th></tr></thead><tbody>${[0,1].map(p => `<tr><td style="white-space:normal">${esc(nm(p))} earns an extra</td><td style="white-space:normal">${cell(p,'e')}</td><td style="white-space:normal">${cell(p,'i')}</td></tr>`).join('')}</tbody></table>`;
-    $('#needTxt').textContent = `The smallest extra yearly income, before tax, that makes your plan safe. Safe means it works with the emergency fund and the safety margin. See Your plan for how we decide.`;
+    $('#needTxt').textContent = `The smallest extra yearly income, before tax, that makes your plan safe. Safe means it works with the emergency fund and the safety margin. See Your plan for how this app decides.`;
   }
 };
 
@@ -852,7 +875,7 @@ pages.lump = {
         {name:'Your savings', color:'var(--c3)', pts:ptsPot, short:'Savings'},
         {name:'Both together', color:'var(--ink)', pts:ptsAll, dash:'6 5', width:2.5, short:'Together'}],
         xMin:Math.floor(startAge), xMax:Math.ceil(sim.endAge), xStep:1, zero:true, endLabels:true, xTitle:`${nm(0)}'s age`, label:'Value of the investment, your savings and the two together over the plan'});
-      $('#gNote').textContent = `Your savings are shown for ${sc==='e'?'essentials only':'your ideal lifestyle'}. Together, your savings and the investment are worth ${money(last + sim.rows[years-1].endBuf[sc])} at age ${end}. We assume the investment grows ${S.growth}% a year after prices rise, so these amounts are in today's money.${crash ? ' This includes a 25% fall in the first year.' : ''}`;
+      $('#gNote').textContent = `Your savings are shown for ${sc==='e'?'essentials only':'your ideal lifestyle'}. Together, your savings and the investment are worth ${money(last + sim.rows[years-1].endBuf[sc])} at age ${end}. This app assumes the investment grows ${S.growth}% a year after prices rise, so these amounts are in today's money.${crash ? ' This includes a 25% fall in the first year.' : ''}`;
       $('#gTbl').innerHTML = `<table><thead><tr><th>Year</th><th>${esc(nm(0))} age</th><th>Investment at start</th><th>Growth</th>${income?'<th>Paid to you</th>':''}<th>Investment at end</th><th>Your savings</th><th>Savings + investment</th></tr></thead><tbody>`
         + sim.rows.map((r,y) => { const st = inv.pot[y], en = inv.pot[y+1], tk = inv.taken[y+1] - inv.taken[y], pot = r.endBuf[sc];
           return `<tr><td>Year ${y+1}</td><td>${r.age0}</td><td>${money(st)}</td><td class="pos">+${money(en - st + tk)}</td>${income?`<td>${money(tk)}</td>`:''}<td><b>${money(en)}</b></td><td class="${pot<0?'neg':''}">${money(pot)}</td><td class="${en+pot<0?'neg':''}">${money(en + pot)}</td></tr>`; }).join('') + `</tbody></table>`;
@@ -924,21 +947,21 @@ pages.numbers = {
         ${num('swr','Yearly income from the investment, %','Only used if you choose "take a yearly income". It is a share of the amount first invested. 4% a year is a common, careful guide.','')}
         <div class="field" style="grid-column:1/-1"><label>What happens to the lump sum</label>${modeSeg()}<div class="hint">The Lump sum page shows what each choice does over your plan.</div></div>
       </div></section>
-      <section class="card"><h2>Other things we assume</h2><div class="fields">
+      <section class="card"><h2>Other things this app assumes</h2><div class="fields">
         ${num('inflation','Prices going up, % a year','0 means prices stay the same. Try 2.5 to see the effect of the tax-free allowance staying frozen until April 2031: you pay more tax.','')}
         ${num('cashReal','Interest on your savings, after prices rise, %','0 means your savings just keep up with prices.','')}
         ${num('growth','Investment growth, after prices rise, %','Used for the investment charts, and to check the investment can keep paying an income.','')}
         ${num('payLag','Months before your first pension payments arrive','Pensions are paid after the month they cover. The first State Pension payment can arrive up to 5 weeks after it starts. Use 1 to be careful.','')}
-        <div class="field"><label class="check"><input type="checkbox" data-flag="marriage"> We are married or in a civil partnership: use Marriage Allowance</label><div class="hint">One of you passes £1,260 of tax-free allowance to the other. It saves up to £252 a year. It only works when one of you pays no tax and the other pays the basic 20% rate. You have to claim it from HMRC.</div></div>
+        <div class="field"><label class="check"><input type="checkbox" data-flag="marriage"> You are married or in a civil partnership: use Marriage Allowance</label><div class="hint">One of you passes £1,260 of tax-free allowance to the other. It saves up to £252 a year. It only works when one of you pays no tax and the other pays the basic 20% rate. You have to claim it from HMRC.</div></div>
       </div></section>
       <section class="card"><h2>How the sums work</h2><ul class="tidy">
-        <li>Each month we add up what comes in (pensions, State Pensions, any earnings and any investment income), take off tax, and take off what you spend. What is left, or missing, moves your savings up or down.</li>
-        <li><b>Tax:</b> 20% on everything above the tax-free allowance of ${money(PA_BASE)} a year, for each of you. Higher-rate and Scottish tax are not included. We treat all private pension as taxable, which is the careful way. Earnings also pay 8% National Insurance above ${money(NI_THRESHOLD)} a year until State Pension age.</li>
-        <li><b>Marriage Allowance</b> (if switched on) only counts in months when one of you has income at or below the allowance and the other pays the basic rate. The one who gives up allowance may start to pay a little tax, so we only use it when it saves money overall.</li>
+        <li>Each month the app adds up what comes in (pensions, State Pensions, any earnings and any investment income), take off tax, and take off what you spend. What is left, or missing, moves your savings up or down.</li>
+        <li><b>Tax:</b> 20% on everything above the tax-free allowance of ${money(PA_BASE)} a year, for each of you. Higher-rate and Scottish tax are not included. All private pension is treated as taxable, which is the careful way. Earnings also pay 8% National Insurance above ${money(NI_THRESHOLD)} a year until State Pension age.</li>
+        <li><b>Marriage Allowance</b> (if switched on) only counts in months when one of you has income at or below the allowance and the other pays the basic rate. The one who gives up allowance may start to pay a little tax, so it is only used when it saves money overall.</li>
         <li><b>State Pension age</b> comes from your date of birth, using the current rules for England, Wales and Northern Ireland: 66 if born up to 5 April 1960, rising to 67 for those born from 6 March 1961, and 68 for those born from 6 April 1977.</li>
-        <li>The plan runs until ${esc(nm(0))} is ${END_AGE}, or until 3 years after the later State Pension starts, whichever is later. Only the Lump sum page looks further, to age 90. If the money coming in is still below what you spend at the end, we tell you when your savings would run out.</li>
+        <li>The plan runs until ${esc(nm(0))} is ${END_AGE}, or until 3 years after the later State Pension starts, whichever is later. Only the Lump sum page looks further, to age 90. If the money coming in is still below what you spend at the end, the app tells you when your savings would run out.</li>
         <li><b>Safe to retire</b> means the plan still works after: an emergency fund of ${RESERVE_MONTHS} months of essential spending is kept untouched; spending is ${Math.round(SPEND_MARGIN*100)}% higher; first pension payments are a month late; and prices rise 2.5% a year. The money coming in after the State Pensions start must also cover what you spend.</li>
-        <li><b>What we leave out:</b> one-off costs such as a new car, care costs, moving house, and changes to the rules. Income and tax are worked out month by month at the yearly rate, which can slightly overstate tax in the year a State Pension starts. Pensions start in the month of the birthday. The investment income stops if the investment would run out.</li>
+        <li><b>What this app leaves out:</b> one-off costs such as a new car, care costs, moving house, and changes to the rules. Income and tax are worked out month by month at the yearly rate, which can slightly overstate tax in the year a State Pension starts. Pensions start in the month of the birthday. The investment income stops if the investment would run out.</li>
         <li>This is a planning guide, not financial advice. Check pension amounts with your pension scheme and State Pension ages on gov.uk. For free, impartial help, contact MoneyHelper or Pension Wise (both government-backed).</li></ul></section>
       <section class="card"><h2>Start again</h2><p>Put every number back to the starting values. This clears anything you have typed.</p><div><button class="btn ghost" id="reset" type="button">Reset to the starting numbers</button></div></section>`; },
   update(){
@@ -952,11 +975,191 @@ pages.numbers = {
   bind(){
     $('#reset').addEventListener('click', () => {
       const b = $('#reset');
-      if (b.dataset.sure){ const keep = S.view; Object.assign(S, defaultState(), {view:keep}); save(); render(); return; }
+      if (b.dataset.sure){ const keep = S.view; Object.assign(S, defaultState(), {view:keep, tourSeen:true}); save(); render(); return; }
       b.dataset.sure = 1; b.textContent = 'Tap again to confirm'; b.className = 'btn danger';
       setTimeout(() => { if (b.isConnected){ delete b.dataset.sure; b.textContent = 'Reset to the starting numbers'; b.className = 'btn ghost'; } }, 5000);
     });
   }
+};
+
+/* ---------- guided tour: one question at a time ---------- */
+let tourStep = 0;
+const tnum = (key, label, hint, pre) => `<div class="field"><label for="t_${key}">${label}</label><div class="inp">${pre?`<span>${pre}</span>`:''}<input id="t_${key}" data-key="${key}" type="number" inputmode="decimal" min="0" step="any"></div>${hint?`<div class="hint">${hint}</div>`:''}</div>`;
+const ttext = (key, label) => `<div class="field"><label for="t_${key}">${label}</label><input id="t_${key}" data-key="${key}" type="text" maxlength="20"></div>`;
+const tdate = key => `<div class="field"><label for="t_${key}">Date of birth</label><input id="t_${key}" data-key="${key}" type="date"><div class="hint">Type the day, month and year, or pick it from the calendar.</div></div>`;
+const where = t => `<details class="how"><summary>Where do I find this?</summary><p style="margin-top:8px">${t}</p></details>`;
+const chip = (key, val, label) => `<button type="button" class="chip" data-set="${key},${val}">${label}</button>`;
+const spaTour = i => { const sim = simulate(S), el = $('#tourSpa'+i); if (el) el.innerHTML = `${nmx(i)} can claim State Pension from age <b>${ageText(sim.spaAge[i])}</b> (${monthName(sim.spaIdx[i])}).`; };
+const TOUR = [
+  {id:'welcome', next:'Start', title:() => 'Welcome', body:() => `
+    <p class="lead bigtext">This app helps you see whether you can afford to retire. It asks one simple question at a time, then gives you a clear answer.</p>
+    <p>It takes about 10 minutes. You can go back at any time. If you are not sure about something, keep the example number and change it later.</p>
+    <div class="safebox"><h2>Your numbers stay private</h2><p>Everything you type stays on this device. Nothing is sent over the internet, and nothing is saved on any website. <a href="#privacy">Read more</a></p></div>`},
+  {id:'how', title:() => 'How it works', body:() => `
+    <ol class="steps bigtext">
+      <li><b>You answer some questions</b> about your pensions, savings and spending.</li>
+      <li><b>The app does the sums.</b> It checks, month by month, whether your money lasts until your State Pensions start, and after that. It also tests what happens if bills go up or payments are late.</li>
+      <li><b>You get a clear answer:</b> yes, close but not safe yet, or not yet. If it is not yet, the app shows how much extra income would make it safe.</li></ol>
+    <h2>It helps to have these to hand</h2>
+    <ul class="tidy"><li>Your latest pension statement</li><li>Your State Pension forecast (free at gov.uk/check-state-pension)</li><li>Your bank and savings balances</li><li>A rough idea of what you spend each month</li></ul>
+    <p class="small">Do not worry if you do not have them yet. You can use the example numbers now and correct them later.</p>`},
+  {id:'names', title:() => 'What should the app call you?', body:() => `
+    <p>Type your first names, or leave "Person 1" and "Person 2". The plan starts when Person 1 retires, so choose whoever retires first as Person 1.</p>
+    <div class="fields">${ttext('names.0','First person')}${ttext('names.1','Second person')}</div>`},
+  {id:'dob0', title:() => `When was ${nm(0)} born?`, live:() => spaTour(0), body:() => `
+    <p>The age you can claim your State Pension depends on your date of birth. It changes the answer a lot, so please use the real date.</p>
+    ${tdate('dob.0')}<div class="info" id="tourSpa0"></div>`},
+  {id:'dob1', title:() => `When was ${nm(1)} born?`, live:() => spaTour(1), body:() => `
+    <p>Same question for ${nmx(1)}.</p>${tdate('dob.1')}<div class="info" id="tourSpa1"></div>`},
+  {id:'ret', title:() => `At what age will ${nm(0)} retire?`, body:() => `
+    <p>The plan starts on this birthday. Many people choose 60 or 65.</p>
+    ${tnum('pensionAge.0','Age when you retire and your pension starts','')}
+    <div class="chips">${chip('pensionAge.0',60,'60')}${chip('pensionAge.0',62,'62')}${chip('pensionAge.0',65,'65')}</div>`},
+  {id:'pen0', title:() => `How much will ${nm(0)}'s pension pay each year?`, body:() => `
+    <p>This is a workplace pension (for example from a job). Use the yearly amount before tax.</p>
+    ${tnum('pension.0','Yearly pension, before tax','Enter 0 if there is none.','£')}
+    ${where('Look on your latest pension statement for a line such as "pension at retirement" or "annual pension". If you are not sure, ask your pension provider, or keep the example for now and change it later.')}`},
+  {id:'pen1', title:() => `Does ${nm(1)} have a pension of their own?`, body:() => `
+    <p>This could be a workplace or private pension. Leave it at £0 if there is none or you are not sure.</p>
+    ${tnum('pension.1','Yearly pension, before tax','','£')}
+    ${tnum('pensionAge.1','Pension can be taken from age','Most private pensions can be taken from 55 (57 from April 2028).')}`},
+  {id:'sp0', title:() => `How much State Pension will ${nm(0)} get each year?`, body:() => `
+    <p>The State Pension is paid by the government once you reach State Pension age.</p>
+    ${tnum('sp.0','Yearly State Pension','','£')}
+    <div class="chips">${chip('sp.0',12547.6,'Use the full amount (£12,547.60)')}</div>
+    ${where('Get your forecast at gov.uk/check-state-pension. It is free and shows your yearly amount. The full amount is £12,547.60 a year in 2026/27. You get less if you have fewer than 35 years of National Insurance.')}`},
+  {id:'sp1', title:() => `How much State Pension will ${nm(1)} get each year?`, body:() => `
+    <p>Same question for ${nmx(1)}.</p>
+    ${tnum('sp.1','Yearly State Pension','','£')}
+    <div class="chips">${chip('sp.1',12547.6,'Use the full amount (£12,547.60)')}</div>
+    ${where('Get the forecast at gov.uk/check-state-pension. Each person needs their own forecast.')}`},
+  {id:'work', title:() => 'Will either of you work part-time after retiring?', body:() => `
+    <p>This is optional. Enter what each of you would earn in a year before tax. It stops when that person's State Pension starts. Leave both at £0 if you will not work.</p>
+    <div class="fields">${tnum('work.0',`${esc(nm(0))}: yearly earnings`,'','£')}${tnum('work.1',`${esc(nm(1))}: yearly earnings`,'','£')}</div>`},
+  {id:'ess', title:() => 'What do you spend each month on the things you must pay for?', body:() => `
+    <p>Think of bills and costs you cannot do without: housing, council tax, gas and electricity, water, food, transport, insurance, phone and internet, medicines.</p>
+    ${tnum('ess','Essential spending, per month','','£')}
+    ${where('Add up the last 3 months of your bank statements, leaving out holidays and treats, then divide by 3.')}`},
+  {id:'ideal', title:() => 'What would you like to spend each month?', body:() => `
+    <p>This is your ideal lifestyle: everything in your essentials, plus holidays, eating out, gifts, hobbies and treats.</p>
+    ${tnum('ideal','Ideal spending, per month','','£')}`},
+  {id:'cash', title:() => 'How much do you have in savings today?', body:() => `
+    <p>Count money you could get at quickly, such as bank and building society accounts. Do not count money inside a pension.</p>
+    ${tnum('cash','Savings today','','£')}`},
+  {id:'lump', title:() => 'Will you get a tax-free lump sum when you retire?', body:() => `
+    <p>Some workplace pensions pay a one-off, tax-free lump sum when you start taking them. It will be on your pension statement. Enter 0 if there is none.</p>
+    ${tnum('lump','Tax-free lump sum','','£')}`},
+  {id:'lumpmode', skip:() => S.lump <= 0, title:() => 'What should happen to the lump sum?', live:() => syncTourLump(), body:() => `
+    <p>Choose the simplest one if you are unsure. You can change it any time on the Lump sum page.</p>
+    ${modeSeg()}
+    <p id="tourModeTxt" class="bigtext"></p>
+    <ul class="tidy small"><li><b>Keep it all in savings:</b> simple and safe. It does not grow.</li><li><b>Split it, let the investment grow:</b> part stays in savings, part is invested for growth. Investments can go down as well as up.</li><li><b>Split it, take a yearly income:</b> as above, but you also take a small income from the investment each year.</li></ul>
+    <div class="inset" id="splitBox">
+      <div class="sliderrow"><div class="top"><label for="split"><b style="font-size:1.1rem">How much goes into the investment?</b></label><b id="splitV"></b></div><input type="range" id="split" min="0" max="18000" step="50"></div>
+      <div class="two">
+        <div class="field"><label for="amtCash">Into your savings</label><div class="inp"><span>£</span><input id="amtCash" type="number" inputmode="decimal" min="0" step="any"></div></div>
+        <div class="field"><label for="amtInv">Into the investment</label><div class="inp"><span>£</span><input id="amtInv" type="number" inputmode="decimal" min="0" step="any"></div></div>
+      </div>
+      <div class="sliderrow" id="swrBox"><div class="top"><label for="swr"><b style="font-size:1.1rem">Yearly income from the investment</b></label><b id="swrV"></b></div><input type="range" id="swr" min="1" max="8" step="0.25"><span class="small" id="swrNote"></span></div>
+    </div>`},
+  {id:'marriage', title:() => 'Are you married or in a civil partnership?', live:() => document.querySelectorAll('[data-flagset]').forEach(b => { const [k, v] = b.dataset.flagset.split(','); b.setAttribute('aria-pressed', String(!!S[k] === (v === '1'))); }), body:() => `
+    <p>If you are, one of you may be able to pass part of your tax-free allowance to the other and save tax. This is called Marriage Allowance. The app will include it if you say yes.</p>
+    <div class="chips"><button type="button" class="choice" data-flagset="marriage,1" aria-pressed="false">Yes</button><button type="button" class="choice" data-flagset="marriage,0" aria-pressed="false">No</button></div>
+    ${where('It only helps if one of you pays no tax and the other pays the basic 20% rate. You have to claim it from HMRC. The Your plan page shows how much it could save.')}`},
+  {id:'done', next:'See my full plan', title:() => 'All done. Here is your answer.', body:() => `
+    ${answerHTML()}
+    <details class="how"><summary>Check what you entered</summary><ul class="tidy" style="margin-top:10px">
+      <li>${nmx(0)} born ${esc(S.dob[0])}, retires at ${S.pensionAge[0]}, pension ${money(S.pension[0])} a year, State Pension ${money(S.sp[0])} a year.</li>
+      <li>${nmx(1)} born ${esc(S.dob[1])}, pension ${money(S.pension[1])} a year from age ${S.pensionAge[1]}, State Pension ${money(S.sp[1])} a year.</li>
+      <li>Spending: ${money(S.ess)} a month on essentials, ${money(S.ideal)} a month for your ideal lifestyle.</li>
+      <li>Savings ${money(S.cash)}. Lump sum ${money(S.lump)}.${S.marriage ? ' Marriage Allowance is on.' : ''}</li></ul></details>
+    <p class="small">You can change any number later on the Your numbers page, or take the tour again from the top of the page.</p>`}
+];
+function syncTourLump(){
+  const mode = modeOf(S), lump = Math.max(0, S.lump), cashIn = Math.min(Math.max(0, S.emergency), lump), amt = lump - cashIn, income = mode === 'income';
+  const t = $('#tourModeTxt'); if (!t) return;
+  t.textContent = {cash:`All ${money(lump)} goes into your savings. Nothing is invested.`,
+    grow:`${money(cashIn)} goes into your savings and ${money(amt)} is invested. You take nothing out, so the investment just grows.`,
+    income:`${money(cashIn)} goes into your savings and ${money(amt)} is invested. Each year you take ${S.swr}% of it (${money(amt*S.swr/100)}) as extra income.`}[mode];
+  $('#splitBox').hidden = mode === 'cash'; $('#swrBox').hidden = !income;
+  $('#split').max = lump; setVal($('#split'), amt); $('#splitV').textContent = money(amt) + ' invested';
+  setVal($('#amtCash'), cashIn); setVal($('#amtInv'), amt); setVal($('#swr'), S.swr); $('#swrV').textContent = S.swr + '%'; $('#swrNote').textContent = `${money(amt*S.swr/100)} a year, tax-free from an ISA.`;
+}
+const tourSteps = () => TOUR.filter(st => !st.skip || !st.skip());
+function drawTour(){
+  const steps = tourSteps(); tourStep = Math.max(0, Math.min(tourStep, steps.length - 1));
+  const st = steps[tourStep], first = tourStep === 0, last = tourStep === steps.length - 1, pct = Math.round(tourStep / (steps.length - 1) * 100);
+  $('#tourBox').innerHTML = `
+    <div class="progress" role="progressbar" aria-label="Tour progress" aria-valuemin="1" aria-valuemax="${steps.length}" aria-valuenow="${tourStep+1}"><i style="width:${pct}%"></i></div>
+    <p class="small" id="tourCount">Step ${tourStep+1} of ${steps.length}</p>
+    <section class="card tourcard"><h1 id="tourH" tabindex="-1">${st.title()}</h1>${st.body()}</section>
+    <div class="tournav">${first ? '' : '<button type="button" class="btn ghost big" data-tour="back">Back</button>'}<button type="button" class="btn big" data-tour="next">${st.next || 'Next'}</button></div>
+    <p><button type="button" class="linkbtn" data-tour="skip">Skip the tour</button></p>`;
+  bindCommon(); refresh();
+  const h = $('#tourH'); if (h) h.focus({preventScroll:true});
+  window.scrollTo(0, 0);
+}
+pages.tour = {
+  build(){ return '<div id="tourBox"></div>'; },
+  bind(){ drawTour(); },
+  update(){
+    document.querySelectorAll('#tourBox [data-key]').forEach(el => { if (document.activeElement !== el) el.value = getPath(el.dataset.key); });
+    const st = tourSteps()[tourStep]; if (st && st.live) st.live();
+    document.querySelectorAll('[data-name]').forEach(el => el.textContent = nm(+el.dataset.name));
+  }
+};
+function tourFinish(){ S.tourSeen = true; save(); location.hash = '#plan'; }
+document.addEventListener('click', e => {
+  const b = e.target.closest && e.target.closest('[data-tour]');
+  if (b){ const a = b.dataset.tour, n = tourSteps().length;
+    if (a === 'back'){ tourStep = Math.max(0, tourStep - 1); drawTour(); }
+    else if (a === 'next'){ if (tourStep >= n - 1) tourFinish(); else { tourStep++; drawTour(); } }
+    else if (a === 'skip') tourFinish(); return; }
+  const c = e.target.closest && e.target.closest('[data-set]');
+  if (c){ const [k, v] = c.dataset.set.split(','); setPath(k, parseFloat(v)); save(); refresh(); return; }
+  const f = e.target.closest && e.target.closest('[data-flagset]');
+  if (f){ const [k, v] = f.dataset.flagset.split(','); S[k] = v === '1'; save(); refresh(); return; }
+  if (e.target.closest && e.target.closest('.tourlink')) tourStep = 0;
+});
+document.addEventListener('keydown', e => {
+  if (e.key === 'Enter' && current === 'tour' && e.target.matches && e.target.matches('#tourBox input')){ e.preventDefault(); const n = $('#tourBox [data-tour="next"]'); if (n) n.click(); }
+});
+
+/* ---------- privacy ---------- */
+pages.privacy = {
+  build(){ return `
+    <div><h1>Your numbers are private</h1></div>
+    <section class="card"><div class="safebox"><h2>Nothing you type ever leaves this device.</h2>
+      <p class="bigtext">Nothing is sent over the internet. Nothing is saved on any website or in any online "cloud". Your numbers stay in this web browser, on the phone, tablet or computer you are using now.</p></div></section>
+    <section class="card"><h2>What happens to the numbers you type?</h2>
+      <ul class="tidy bigtext">
+        <li><b>They are kept on this device only.</b> The app saves them inside this web browser so they are still here when you come back. It is like writing in a notebook that stays in your bag.</li>
+        <li><b>They are never sent to anyone.</b> Not to the person who made this app, not to a company, not to a website. There is no account, no sign-in and no email address to give.</li>
+        <li><b>Nobody else can look at them online.</b> There is nowhere online for them to be.</li></ul></section>
+    <section class="card"><h2>How can you be sure?</h2>
+      <ul class="tidy">
+        <li>The app has no way to send anything. After the page has opened, it never contacts the internet again.</li>
+        <li><b>Try it yourself:</b> once this page is open, turn off your Wi-Fi or switch on aeroplane mode. Everything still works, and nothing is lost.</li>
+        <li>The only thing that travels over the internet is the page itself, coming to your device when you open it. That is like borrowing a library book: the library does not see what you write in the margins.</li></ul></section>
+    <section class="card"><h2>Things to know</h2>
+      <ul class="tidy">
+        <li><b>Each device keeps its own numbers.</b> Numbers you type on your phone are not on your computer.</li>
+        <li><b>Anyone who uses this same device and web browser could see them.</b> If you share a device, use the button below when you have finished.</li>
+        <li><b>If you clear your browser's history or data, or use a private window, your numbers are lost.</b> If you want to keep an answer, take a screenshot.</li>
+        <li>This app does not use cookies and does not track you.</li></ul></section>
+    <section class="card"><h2>Delete my numbers from this device</h2>
+      <p>This removes every number you have typed from this device. It cannot be undone.</p>
+      <div><button type="button" class="btn ghost" id="wipe">Delete my numbers</button></div><p id="wipeMsg" class="small" aria-live="polite"></p></section>`; },
+  bind(){
+    $('#wipe').addEventListener('click', () => {
+      const b = $('#wipe');
+      if (b.dataset.sure){ wipe(); Object.assign(S, defaultState(), {tourSeen:true}); b.className = 'btn ghost'; b.textContent = 'Delete my numbers'; delete b.dataset.sure;
+        $('#wipeMsg').textContent = 'Done. Nothing is saved on this device now.'; return; }
+      b.dataset.sure = 1; b.textContent = 'Tap again to delete'; b.className = 'btn danger';
+      setTimeout(() => { if (b.isConnected && b.dataset.sure){ delete b.dataset.sure; b.textContent = 'Delete my numbers'; b.className = 'btn ghost'; } }, 5000);
+    });
+  },
+  update(){}
 };
 
 /* ---------- state paths ---------- */
@@ -967,6 +1170,7 @@ function setPath(k, v){ const [a,b] = k.split('.'); if (b===undefined) S[a] = v;
 let current = 'plan';
 function render(){
   const h = (location.hash||'').replace('#','');
+  if (!h && !S.tourSeen){ location.replace('#tour'); return; }
   current = pages[h] ? h : 'plan';
   document.querySelectorAll('#tabs a').forEach(a => a.setAttribute('aria-current', a.dataset.p===current ? 'page' : 'false'));
   $('#main').innerHTML = pages[current].build();
