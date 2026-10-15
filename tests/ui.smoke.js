@@ -21,9 +21,9 @@ const t = async (n, f) => { try { await f(); pass++; } catch (e) { fail++; conso
     await go('numbers'); await pg.fill('[data-key="names.0"]', 'Alex'); await pg.fill('[data-key="names.1"]', 'Sam');
     assert(/Alex/.test(await txt('.brand'))); await pg.click('a[data-p="plan"]'); assert(/Alex/.test(await txt('main'))); assert(/Sam/.test(await txt('main'))); });
   await t('date of birth sets State Pension age, and the placeholder warning disappears', async () => {
-    await go('numbers'); assert(/placeholders/.test(await txt('#dobB')));
-    await pg.fill('[data-key="dob.0"]', '1960-04-05'); assert(/State Pension age 66, from/.test(await txt('#spa0')));
-    await pg.fill('[data-key="dob.1"]', '1970-06-01'); assert(/State Pension age 67, from/.test(await txt('#spa1')));
+    await go('numbers'); assert(/example dates/.test(await txt('#dobB')));
+    await pg.fill('[data-key="dob.0"]', '1960-04-05'); assert(/claim State Pension from age 66 /.test(await txt('#spa0')));
+    await pg.fill('[data-key="dob.1"]', '1970-06-01'); assert(/claim State Pension from age 67 /.test(await txt('#spa1')));
     assert.strictEqual((await txt('#dobB')).trim(), ''); });
   await t('Marriage Allowance toggle changes the plan and shows the saving', async () => {
     await go('whatif'); const before = await txt('#maTxt'); assert(/Saves about/.test(before));
@@ -59,7 +59,7 @@ const t = async (n, f) => { try { await f(); pass++; } catch (e) { fail++; conso
     await go('numbers'); await pg.fill('[data-key="lump"]', '1000'); await pg.fill('[data-key="emergency"]', '2000'); await pg.click('a[data-p="lump"]'); await pg.waitForTimeout(150);
     assert(/Nothing is going into the investment/.test(await txt('#gH'))); assert(/Nothing to compare/.test(await txt('#lH'))); });
   await t('the savings pot page shows the investment column when investing', async () => {
-    await go('pot'); assert(/Investment at year end/.test(await txt('#tbl'))); await pg.click('.modeBtn[data-mode="cash"]').catch(()=>{}); });
+    await go('pot'); assert(/Investment at the end of the year/.test(await txt('#tbl'))); await pg.click('.modeBtn[data-mode="cash"]').catch(()=>{}); });
   await t('numbers persist in the browser after reload', async () => {
     await go('numbers'); await pg.fill('[data-key="ess"]', '1234'); await pg.reload(); await pg.waitForTimeout(150);
     assert.strictEqual(await pg.inputValue('[data-key="ess"]'), '1234'); });
@@ -69,7 +69,7 @@ const t = async (n, f) => { try { await f(); pass++; } catch (e) { fail++; conso
 
   await t('clearing a date of birth does not break the page', async () => {
     await go('numbers'); await pg.fill('[data-key="dob.0"]', ''); await pg.fill('[data-key="ess"]', '1500');
-    assert(/State Pension age/.test(await txt('#spa0'))); assert(/Result so far/.test(await txt('#live'))); });
+    assert(/claim State Pension from age/.test(await txt('#spa0'))); assert(/Where you stand so far/.test(await txt('#live'))); });
   await t('someone already past State Pension age is not told they have unused allowance', async () => {
     await go('numbers'); await pg.fill('[data-key="dob.1"]', '1955-01-01'); await pg.fill('[data-key="pension.1"]', '0'); await pg.fill('[data-key="sp.1"]', '12500');
     await pg.click('a[data-p="plan"]'); await pg.waitForTimeout(100); assert(!/Person 2 has about/.test(await txt('#facts')), 'State Pension of 12,500 uses almost all the allowance'); });
@@ -81,7 +81,52 @@ const t = async (n, f) => { try { await f(); pass++; } catch (e) { fail++; conso
     assert.strictEqual(await pg.locator('main b[onmouseover]').count(), 0); });
   await t('a younger Person 2 stretches the plan and the plan page still renders', async () => {
     await go('numbers'); await pg.fill('[data-key="dob.1"]', '1976-10-15'); await pg.click('a[data-p="plan"]'); await pg.waitForTimeout(150);
-    assert.strictEqual(await txt('#planEnd'), '80'); });
+    assert(/up to age 80/.test(await txt('#planSpan'))); });
+
+  await t('the answer: plenty of savings gives a clear "yes, you can afford to retire"', async () => {
+    await go('numbers'); await pg.fill('[data-key="cash"]', '600000'); await pg.click('a[data-p="plan"]'); await pg.waitForTimeout(150);
+    assert(/Yes, you can afford to retire\./.test(await txt('#answer h1'))); assert.strictEqual(await pg.locator('#answer [data-try]').count(), 0);
+    assert(/Safe/.test(await txt('#answer .lines'))); });
+  await t('the answer: not enough money gives "not yet" and offers extra-income options with a try button', async () => {
+    await go('numbers'); await pg.fill('[data-key="cash"]', '0'); await pg.fill('[data-key="lump"]', '0'); await pg.fill('[data-key="ess"]', '2500'); await pg.fill('[data-key="ideal"]', '3000');
+    await pg.click('a[data-p="plan"]'); await pg.waitForTimeout(150);
+    assert(/Not yet/.test(await txt('#answer h1'))); assert(/could safely retire if/.test(await txt('#answer'))); assert(await pg.locator('#answer [data-try]').count() >= 1); });
+  await t('"try this in my plan" adds the earnings, improves the answer, and can be removed', async () => {
+    await go('numbers'); await pg.fill('[data-key="cash"]', '5000'); await pg.fill('[data-key="ess"]', '1800'); await pg.click('a[data-p="plan"]'); await pg.waitForTimeout(150);
+    const before = await txt('#answer h1'); assert(!/^Yes/.test(before), before);
+    await pg.locator('#answer [data-try]').first().click(); await pg.waitForTimeout(150);
+    assert(/already includes extra earnings/.test(await txt('#answer'))); assert(/^Yes/.test(await txt('#answer h1')), await txt('#answer h1'));
+    await pg.click('[data-clearwork]'); await pg.waitForTimeout(100); assert(!/already includes extra earnings/.test(await txt('#answer'))); assert.strictEqual(await txt('#answer h1'), before); });
+  await t('what-if earnings sliders change the lowest-savings result and show their amounts', async () => {
+    await go('whatif'); const a = await txt('#wK .kpi .v'); await pg.fill('#w0', '10000'); assert(/£10,000 a year/.test(await txt('#w0v'))); assert.notStrictEqual(a, await txt('#wK .kpi .v'));
+    assert(/earns an extra/.test(await txt('#need'))); });
+  await t('the glossary explains the words, and the page avoids money jargon', async () => {
+    await go('plan'); assert(await pg.locator('details.gloss').count() >= 8);
+    for (const h of ['plan','pot','whatif','lump','numbers']){ await pg.goto(url + '#' + h); await pg.reload(); await pg.waitForTimeout(100);
+      const text = await pg.evaluate(() => document.querySelector('main').innerText);
+      assert(!/\b(drawdown|SWR|annualised|decumulation|gap years|bridge years|buffer)\b/i.test(text), 'jargon on '+h+': '+(text.match(/\b(drawdown|SWR|annualised|decumulation|gap years|bridge years|buffer)\b/i)||[])[0]); } });
+  await t('plain English: the main pages read easily (Flesch reading ease 60 or more)', async () => {
+    const syll = w => { w = w.toLowerCase().replace(/[^a-z]/g,''); if (!w) return 0; const m = w.replace(/e$/,'').match(/[aeiouy]+/g); return Math.max(1, m ? m.length : 1); };
+    for (const h of ['plan','numbers','lump']){ await go(h);
+      const text = await pg.evaluate(() => [...document.querySelectorAll('main p, main li, main h1, main h2, main .hint, main .lead')].map(e => e.innerText).join(' . '));
+      const clean = text.replace(/£[\d,.]+k?/g,'five').replace(/\d+(\.\d+)?%?/g,'five');
+      const sentences = Math.max(1, clean.split(/[.!?]+\s/).length), words = clean.split(/\s+/).filter(w => /[a-z]/i.test(w));
+      const ease = 206.835 - 1.015 * (words.length / sentences) - 84.6 * (words.reduce((a,w) => a + syll(w), 0) / words.length);
+      console.log('   reading ease', h, ease.toFixed(0)); assert(ease >= 60, h + ' reads at ' + ease.toFixed(0)); } });
+  await t('on a phone: bottom tab bar, no sideways scroll, and tables become cards', async () => {
+    const pctx = await b.newContext({viewport:{width:390,height:800}, hasTouch:true, isMobile:true}), ph = await pctx.newPage();
+    await ph.goto(url + '#plan'); await ph.evaluate(() => localStorage.clear()); await ph.reload(); await ph.waitForTimeout(200);
+    const box = await ph.locator('#tabs').boundingBox(); assert(Math.abs(box.y + box.height - 800) < 2, 'tab bar sits at the bottom: '+JSON.stringify(box));
+    for (const h of ['plan','pot','whatif','lump','numbers']){ await ph.goto(url + '#' + h); await ph.waitForTimeout(150);
+      assert.strictEqual(await ph.evaluate('document.documentElement.scrollWidth - window.innerWidth'), 0, 'overflow on '+h); }
+    await ph.goto(url + '#plan'); await ph.waitForTimeout(150);
+    assert.strictEqual(await ph.evaluate(() => getComputedStyle(document.querySelector('#stress td:nth-child(2)')).display), 'flex');
+    assert.strictEqual(await ph.evaluate(() => getComputedStyle(document.querySelector('#stress thead')).display), 'none');
+    assert(await ph.evaluate(() => document.querySelector('main').getBoundingClientRect().bottom > 0));
+    await pctx.close(); });
+  await t('on a desktop: normal tab bar at the top and real tables', async () => {
+    await go('plan'); const box = await pg.locator('#tabs').boundingBox(); assert(box.y < 200, 'tabs at the top');
+    assert.strictEqual(await pg.evaluate(() => getComputedStyle(document.querySelector('#stress thead')).display), 'table-header-group'); });
   await t('no console errors during the whole run', async () => assert.deepStrictEqual(errs, []));
   console.log(`ui smoke: ${pass} passed, ${fail} failed`); await b.close(); process.exit(fail ? 1 : 0);
 })();

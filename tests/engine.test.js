@@ -1,6 +1,6 @@
 // Run: node tests/engine.test.js
 const H = require('./harness.js');
-const {simulate, summarise, assess, neededExtra, lumpModel, spaMonths, monthIdx, defaultState, assert, t, near, done, rng, money, axisMoney, ageText, PA_BASE, HR_THRESHOLD, PA_FREEZE_END, END_AGE} = H;
+const {simulate, summarise, assess, readiness, neededWork, stressedState, NI_RATE, NI_THRESHOLD, RESERVE_MONTHS, SPEND_MARGIN, neededExtra, lumpModel, spaMonths, monthIdx, defaultState, assert, t, near, done, rng, money, axisMoney, ageText, PA_BASE, HR_THRESHOLD, PA_FREEZE_END, END_AGE} = H;
 
 // A tidy test scenario: both born 15 Oct 1966, retirement month = "now", so the plan starts at age 60
 // and both State Pensions begin exactly 84 months in. Money values are made up.
@@ -143,7 +143,7 @@ t('yearly rows add up to the monthly figures', () => {
   near(s.rows.reduce((a,r) => a + r.income, 0), s.months.reduce((a,m) => a + m.income, 0), 1e-6);
   near(s.rows.reduce((a,r) => a + r.n, 0), s.N);
   near(s.rows.reduce((a,r) => a + r.mSave, 0), s.marriageTotal, 1e-6);
-  s.rows.forEach(r => near(r.src.p0+r.src.q0+r.src.p1+r.src.q1+r.src.isa, r.avg, 1e-6, 'sources add to average monthly income'));
+  s.rows.forEach(r => near(r.src.p0+r.src.q0+r.src.p1+r.src.q1+r.src.w+r.src.isa, r.avg, 1e-6, 'sources add to average monthly income'));
   near(s.rows[s.rows.length-1].endBuf.e, s.months[s.N-1].e);
 });
 t('tax shown plus money received equals gross income plus ISA', () => {
@@ -467,5 +467,125 @@ for (let k = 0; k < 150; k++){
       const z = simulate(Object.assign({}, s2, {growth:0}), {nowIdx: nowFor(s2)}); let tk = 0; z.rows.forEach(r => { tk += r.src.isa*12; near(r.isaEnd + tk, amt, 1e-5); }); }
   });
 }
+
+/* ---------- 13. Part-time earnings, and the "safe to retire" test ---------- */
+t('earnings: hand calculation with tax and National Insurance', () => {
+  // Person 1: pension 14,000 + earnings 20,000 = 34,000. Tax (34,000-12,570)*20% = 4,286. NI (20,000-12,570)*8% = 594.40.
+  // Net 34,000 - 4,286 - 594.40 = 29,119.60. Plus ISA 760.
+  const s = run({work:[20000,0]});
+  near(s.months[0].tax[0], 4286, 1e-9); near(s.months[0].ni[0], 594.4, 1e-9); near(s.months[0].income, (29119.6 + 760)/12, 1e-9);
+  near(s.months[0].w[0], 20000*(1-4286/34000), 1e-9, 'earnings after tax shown on their own');
+});
+t('earnings stop on the person\'s own State Pension birthday, and not before', () => {
+  const s = run({work:[0,10000], pension:[14000,0]});
+  near(s.months[83].w[1], 10000); near(s.months[84].w[1], 0);
+  const base = run(); near(s.months[84].income, base.months[84].income, 1e-9);
+  near(s.months[0].income - base.months[0].income, 10000/12, 1e-9, 'under the tax-free allowance, all of it is kept');
+});
+t('earnings under the tax-free allowance pay no tax or National Insurance', () => {
+  const s = run({work:[0,12570], pension:[0,0], invest:false}); near(s.months[0].tax[1], 0); near(s.months[0].ni[1], 0); near(s.months[0].income, 12570/12, 1e-9);
+});
+t('earnings above the threshold pay National Insurance only on the earnings, not on the pension', () => {
+  const s = run({work:[13570,0], pension:[14000,0], invest:false}); near(s.months[0].ni[0], 1000*NI_RATE, 1e-9);
+});
+t('earnings count towards the Marriage Allowance test (a working partner is not a non-taxpayer)', () => {
+  const s = run({work:[0,13000], pension:[20000,0], sp:[0,0], marriage:true}); near(s.months[0].mSave, 0, 1e-9);
+});
+t('earnings: yearly rows still add up and tax and National Insurance are kept apart', () => {
+  const s = run({work:[20000,6000], marriage:true});
+  s.rows.forEach(r => near(r.src.p0+r.src.q0+r.src.p1+r.src.q1+r.src.w+r.src.isa, r.avg, 1e-6));
+  near(s.rows[0].ni, 594.4, 1e-9); near(s.rows[8].ni, 0);
+  near(s.rows[0].tax, s.months[0].tax[0] + s.months[0].tax[1], 1e-9);
+});
+t('lowest balance after the first month excludes the opening balance', () => {
+  const s = run({ess:1, ideal:1}), x = summarise(s, 'e'); near(x.min, s.buf0); assert(x.minMonths > s.buf0);
+});
+t('safety margin: spending +5%, payments a month late, prices +2.5%, never made less careful', () => {
+  const st = stressedState(base());
+  near(st.ess, 1680); near(st.ideal, 2310); assert.strictEqual(st.payLag, 1); near(st.inflation, 2.5);
+  const harsh = stressedState(base({payLag:3, inflation:4})); assert.strictEqual(harsh.payLag, 3); near(harsh.inflation, 4);
+  near(base().ess, 1600, 0, 'the original state is not changed');
+});
+const minOf = (cash, sc) => summarise(simulate(stressedState(base({cash})), {nowIdx:NOW}), sc||'e').minLater;
+t('safe to retire: needs the emergency fund (6 months of essentials) untouched even with the safety margin', () => {
+  const m0 = minOf(25000), reserve = RESERVE_MONTHS * 1600;      // the lowest balance rises 1-for-1 with starting cash
+  const at = target => readiness(base({cash: 25000 + (target - m0)}), 'e', {nowIdx:NOW});
+  assert.strictEqual(at(reserve + 1).level, 'safe'); assert(at(reserve + 1).safe);
+  assert.notStrictEqual(at(reserve - 1).level, 'safe'); near(at(reserve - 1).gap, 1, 1e-6);
+  near(at(reserve + 1).reserve, 9600);
+});
+t('safe / tight / no: tight works as entered but fails the margin; no runs out as entered', () => {
+  const m0 = minOf(25000), b0 = summarise(simulate(base(), {nowIdx:NOW}), 'e').minMonths;   // as entered
+  const withBase = target => base({cash: 25000 + (target - b0)});                        // base lowest balance = target
+  assert.strictEqual(readiness(withBase(50000), 'e', {nowIdx:NOW}).level, 'safe');
+  const r = readiness(withBase(300), 'e', {nowIdx:NOW}); assert.strictEqual(r.level, 'tight');
+  assert.strictEqual(readiness(withBase(-300), 'e', {nowIdx:NOW}).level, 'no');
+});
+t('safe to retire is always stricter than the plain traffic light', () => {
+  for (const cash of [0, 5000, 15000, 25000, 40000, 80000, 200000]){
+    const r = readiness(base({cash}), 'e', {nowIdx:NOW});
+    if (r.level === 'safe') assert(r.base.runOut < 0, 'safe implies it works as entered');
+    near(0, 0);
+  }
+});
+t('safe to retire: a permanent shortfall after State Pension is never safe, however large the savings look', () => {
+  const r = readiness(base({pension:[6000,0], sp:[5000,0], cash:150000, lump:0, emergency:0}), 'e', {nowIdx:NOW}); assert(!r.safe); assert.notStrictEqual(r.level, 'safe');
+});
+const notSafe = () => base({cash:15000, ess:1700, ideal:2300});
+t('how much more would make it safe: minimal for each person and each budget', () => {
+  for (const person of [0,1]) for (const sc of ['e','i']){
+    const s = notSafe(), x = neededWork(s, person, sc, {nowIdx:NOW});
+    assert(x > 0 && x !== null, 'needs something '+person+sc);
+    const withX = v => { const w = [0,0]; w[person] = v; return readiness(Object.assign({}, s, {work:w}), sc, {nowIdx:NOW}); };
+    assert(withX(x).safe, 'works at '+x); assert(!withX(x - 10).safe, 'ten pounds less does not');
+  }
+});
+t('how much more: 0 when already safe, nothing to add on top of existing earnings', () => {
+  assert.strictEqual(neededWork(base({cash:500000}), 0, 'e', {nowIdx:NOW}), 0);
+  const s = notSafe(), x = neededWork(s, 0, 'e', {nowIdx:NOW});
+  const y = neededWork(Object.assign({}, s, {work:[x,0]}), 0, 'e', {nowIdx:NOW}); assert.strictEqual(y, 0);
+  const half = neededWork(Object.assign({}, s, {work:[Math.floor(x/2/10)*10,0]}), 0, 'e', {nowIdx:NOW}); assert(half > 0 && half < x);
+});
+t('how much more: null when working cannot fix it (huge spending, or already past State Pension age)', () => {
+  assert.strictEqual(neededWork(base({ess:9000, ideal:9000}), 0, 'e', {nowIdx:NOW}), null);
+  const old = base({dob:['1966-10-15','1955-01-01'], pension:[14000,0], sp:[12547.60,9000]});
+  assert.strictEqual(neededWork(Object.assign(old, {cash:0, ess:3000}), 1, 'e', {nowIdx:NOW}), null);
+});
+t('more earnings never lower income or savings', () => {
+  const a = run(), b = run({work:[5000,0]}), c = run({work:[5000,8000]});
+  a.months.forEach((m,i) => { assert(b.months[i].income >= m.income - 1e-9); assert(c.months[i].income >= b.months[i].income - 1e-9); assert(c.months[i].e >= m.e - 1e-9); });
+});
+for (let k = 0; k < 120; k++){
+  const s2 = randomState(); s2.work = [R() < .5 ? 0 : Math.round(pick(0,30000)), R() < .5 ? 0 : Math.round(pick(0,30000))];
+  t('random earnings '+k+': tax and National Insurance are sane and the safety margin is never kinder', () => {
+    const o = {nowIdx: nowFor(s2)}, sim = simulate(s2, o), st = simulate(stressedState(s2), o);
+    sim.months.forEach((m, i) => { assert(m.ni[0] >= 0 && m.ni[1] >= 0); assert(m.income >= 0); assert(m.tax[0] >= 0);
+      near(m.ni[0], Math.max(0, m.w[0] / (1 - (m.tax[0] > 0 ? m.tax[0]/(m.p[0]+m.q[0]+m.w[0]+m.tax[0]) : 0)) - NI_THRESHOLD) * NI_RATE, 1e-6);
+      assert(st.months[i].income <= m.income + 1e-9, 'late payments and inflation never raise income');
+      assert(st.months[i].e <= m.e + 1e-9, 'stressed balance never above the plain one'); });
+    for (const sc of ['e','i']){ const r = readiness(s2, sc, o); if (r.level === 'safe') assert(r.base.runOut < 0); assert(r.gap >= 0); }
+  });
+}
+t('safe to retire: starting below the emergency fund is fine if savings build past it within the first year', () => {
+  const s = base({cash:5000, work:[40000,0], ess:1600});                 // earnings far above spending: the fund fills quickly
+  const r = readiness(s, 'e', {nowIdx:NOW}); assert(r.stressed.minMonths < r.reserve, 'below the fund in the first months'); assert(r.safe, 'but safe: it is in place by the end of year one');
+  const slow = readiness(base({cash:5000, work:[2000,0]}), 'e', {nowIdx:NOW}); assert(!slow.safe, 'not safe if the fund is never reached');
+});
+t('safe to retire: the emergency fund must stay in place after the first year', () => {
+  // plenty at the start, but savings fall below the fund later (before State Pension)
+  const s = base({cash:11000, lump:0, emergency:0, ess:1600}); const r = readiness(s, 'e', {nowIdx:NOW});
+  assert(!r.safe); assert(r.stressed.minLater < r.reserve);
+});
+t('lowest balance from the end of the first year ignores the first eleven months', () => {
+  const s = run({cash:0, lump:0, emergency:0, work:[0,0], pension:[30000,0], ess:1000}), x = summarise(s, 'e');
+  assert(x.minLater >= x.minMonths); near(x.minLater, s.months[11].e, 1e-9);
+});
+t('safe to retire: going below zero early is never safe, even if a large income arrives before the end of year one', () => {
+  // No savings. Person 2's big pension only starts six months in, so the first months are overdrawn.
+  const s = base({cash:0, lump:0, emergency:0, dob:['1966-10-15','1967-04-15'], pension:[0,100000], pensionAge:[60,60], sp:[0,0], work:[0,0], ess:1600});
+  const r = readiness(s, 'e', {nowIdx:NOW});
+  assert(r.stressed.runOut >= 0, 'overdrawn in the first months'); assert(r.stressed.minLater >= r.reserve, 'but comfortably above the fund after year one');
+  assert(!r.safe); assert.strictEqual(r.level, 'no');
+});
 
 done('engine tests');

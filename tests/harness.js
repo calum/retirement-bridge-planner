@@ -4,7 +4,7 @@ const fs = require('fs'), path = require('path'), assert = require('assert');
 const src = fs.readFileSync(path.join(__dirname, '..', 'index.html'), 'utf8');
 const slice = (a, b) => src.split(a)[1].split(b)[0];
 const engine = new Function(slice('/*ENGINE_START*/','/*ENGINE_END*/') +
-  ';return {simulate,summarise,assess,neededExtra,lumpModel,spaMonths,monthIdx,defaultState,minusYears,PA_BASE,TAX_RATE,HR_THRESHOLD,PA_FREEZE_END,END_AGE}')();
+  ';return {simulate,summarise,assess,readiness,neededWork,stressedState,neededExtra,lumpModel,spaMonths,monthIdx,defaultState,minusYears,PA_BASE,TAX_RATE,HR_THRESHOLD,NI_RATE,NI_THRESHOLD,RESERVE_MONTHS,SPEND_MARGIN,PA_FREEZE_END,END_AGE}')();
 const fmt = new Function(slice('/*FORMAT_START*/','/*FORMAT_END*/') + ';return {money,axisMoney,ageText}')();
 let pass = 0, fail = 0;
 function t(name, fn){ try { fn(); pass++; } catch (e) { fail++; console.log('FAIL: ' + name + '\n    ' + String(e.message).split('\n').join('\n    ')); } }

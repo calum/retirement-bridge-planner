@@ -1,6 +1,6 @@
 # Retirement Bridge Planner
 
-A plain-English retirement planner for a couple. It shows how long savings last in the "bridge" years before State Pension starts, what an extra pension would change, whether Marriage Allowance helps, and what to do with a tax-free lump sum (keep it as cash, split it and let the investment grow, or split it and take a yearly income).
+A plain-English retirement planner for a couple. It gives one clear answer to "can we afford to retire?", and says what extra income would make it safe if the answer is not yet. It shows how long savings last in the "bridge" years before State Pension starts, what an extra pension would change, whether Marriage Allowance helps, and what to do with a tax-free lump sum (keep it as cash, split it and let the investment grow, or split it and take a yearly income).
 
 - One static page (`index.html`), no build step, no server.
 - All numbers are typed into the page and stay in your browser (`localStorage`). Nothing is sent anywhere.
@@ -8,6 +8,22 @@ A plain-English retirement planner for a couple. It shows how long savings last 
 - Tax is basic rate only (20% above the personal allowance). State Pension age is worked out from each date of birth using current England, Wales and Northern Ireland rules.
 
 This is a planning aid, not regulated financial advice.
+
+## What "safe" means
+
+The plan page opens with a straight answer: **yes**, **close but not safe yet**, or **not yet**. A plan counts as safe only if it still works after all of this:
+
+- An emergency fund of 6 months of essential spending is in place by the end of the first year and is never touched.
+- Spending is 5% higher than planned.
+- First pension payments arrive a month late (pensions are paid in arrears).
+- Prices rise 2.5% a year (the tax-free allowance is frozen until April 2031).
+- Money coming in after the State Pensions start covers spending, so the savings last for life, not just to the end of the plan.
+
+When the answer is not yet, the page works out the smallest extra yearly income, for each person separately, that would make it safe. It can be part-time work or anything else taxed as income. It stops at that person's State Pension age. Tax and National Insurance are taken off. A "Try this in my plan" button adds it so you can see the new answer.
+
+## Phones
+
+The layout adapts to the screen by itself. On a narrow screen the tabs move to a bar at the bottom, tables turn into cards, and buttons get bigger on touch screens. No device sniffing is used, so it also works on tablets and when a phone is turned sideways.
 
 ## Tests
 
@@ -20,7 +36,7 @@ The calculations are checked in layers. Run `npm test` (plain Node, nothing to i
 5. **Lump sum maths** against compound interest and the annuity formula.
 6. **Formatting** of pounds, signs and ages.
 
-The suite was also tested by breaking the engine on purpose (41 deliberate bugs such as a wrong tax rate, a missing month of interest, a wrong traffic-light threshold or an investment reported a year late). All were caught.
+The suite was also tested by breaking the engine on purpose (59 deliberate bugs such as a wrong tax rate, a missing month of interest, a wrong National Insurance rate, an emergency fund of the wrong size or an investment reported a year late). All were caught.
 
 `npm run test:ui` drives the real page in a headless browser. It needs Playwright:
 `PLAYWRIGHT_MODULE=/path/to/node_modules/playwright CHROMIUM=/path/to/chromium npm run test:ui`
