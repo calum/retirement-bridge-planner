@@ -41,6 +41,25 @@ const t = async (n, f) => { try { await f(); pass++; } catch (e) { fail++; conso
   await t('reset needs a second tap, then restores the defaults', async () => {
     await go('numbers'); await pg.fill('[data-key="ess"]', '999'); await pg.click('#reset'); assert.strictEqual(await pg.inputValue('[data-key="ess"]'), '999');
     await pg.click('#reset'); await pg.waitForTimeout(150); assert.notStrictEqual(await pg.inputValue('[data-key="ess"]'), '999'); });
+
+  await t('clearing a date of birth does not break the page', async () => {
+    await go('numbers'); await pg.fill('[data-key="dob.0"]', ''); await pg.fill('[data-key="ess"]', '1500');
+    assert(/State Pension age/.test(await txt('#spa0'))); assert(/Result so far/.test(await txt('#live'))); });
+  await t('someone already past State Pension age is not told they have unused allowance', async () => {
+    await go('numbers'); await pg.fill('[data-key="dob.1"]', '1955-01-01'); await pg.fill('[data-key="pension.1"]', '0'); await pg.fill('[data-key="sp.1"]', '12500');
+    await pg.click('a[data-p="plan"]'); await pg.waitForTimeout(100); assert(!/Person 2 has about/.test(await txt('#facts')), 'State Pension of 12,500 uses almost all the allowance'); });
+  await t('plan page shows the five stress tests', async () => {
+    await go('plan'); assert.strictEqual(await pg.locator('#stress tbody tr').count(), 5); });
+  await t('a name containing quotes and markup cannot break the charts', async () => {
+    await go('numbers'); await pg.fill('[data-key="names.0"]', '"><b onmouseover=1>Hi'); await pg.click('a[data-p="plan"]'); await pg.waitForTimeout(150);
+    assert.strictEqual(await pg.locator('svg b').count(), 0); assert(await pg.locator('svg rect[data-tip]').count() > 5);
+    assert.strictEqual(await pg.locator('main b[onmouseover]').count(), 0); });
+  await t('lump sum smaller than the cash kept gives a clear message, not a broken chart', async () => {
+    await go('numbers'); await pg.fill('[data-key="lump"]', '1000'); await pg.fill('[data-key="emergency"]', '2000'); await pg.click('a[data-p="lump"]'); await pg.waitForTimeout(150);
+    assert(/Nothing is going into the ISA/.test(await txt('#lH'))); });
+  await t('a younger Person 2 stretches the plan and the plan page still renders', async () => {
+    await go('numbers'); await pg.fill('[data-key="dob.1"]', '1976-10-15'); await pg.click('a[data-p="plan"]'); await pg.waitForTimeout(150);
+    assert.strictEqual(await txt('#planEnd'), '80'); });
   await t('no console errors during the whole run', async () => assert.deepStrictEqual(errs, []));
   console.log(`ui smoke: ${pass} passed, ${fail} failed`); await b.close(); process.exit(fail ? 1 : 0);
 })();

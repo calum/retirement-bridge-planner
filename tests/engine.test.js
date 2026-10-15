@@ -1,6 +1,6 @@
 // Run: node tests/engine.test.js
 const H = require('./harness.js');
-const {simulate, summarise, neededExtra, lumpModel, spaMonths, monthIdx, defaultState, assert, t, near, done, rng, money, axisMoney, ageText, PA_BASE, HR_THRESHOLD, PA_FREEZE_END, END_AGE} = H;
+const {simulate, summarise, assess, neededExtra, lumpModel, spaMonths, monthIdx, defaultState, assert, t, near, done, rng, money, axisMoney, ageText, PA_BASE, HR_THRESHOLD, PA_FREEZE_END, END_AGE} = H;
 
 // A tidy test scenario: both born 15 Oct 1966, retirement month = "now", so the plan starts at age 60
 // and both State Pensions begin exactly 84 months in. Money values are made up.
@@ -354,6 +354,72 @@ t('random: neededExtra gives a plan that works, and a smaller amount does not', 
     }
   }
   assert(checked > 5, 'enough cases exercised: '+checked);
+});
+
+/* ---------- 11. Review fixes ---------- */
+t('horizon: default case still ends at age 70 (3 years after State Pension at 67)', () => { const s = run(); assert.strictEqual(s.N, 120); near(s.endAge, 70); });
+t('horizon: a much younger Person 2 extends the plan to 3 years after THEIR State Pension starts', () => {
+  const s = run({dob:['1966-10-15','1976-10-15']});
+  near(s.spaM[1], 204); assert.strictEqual(s.N, 204 + 36); near(s.endAge, 60 + 240/12);
+  assert(s.months[s.N-1].q[1] > 0 && s.months[s.N-37].q[1] === 0 || s.months[s.N-37].q[1] > 0, 'State Pension for Person 2 is inside the plan');
+  near(s.months[203].q[1], 0); assert(s.months[204].q[1] > 0);
+});
+t('horizon: an older Person 2 does not shorten the plan', () => assert.strictEqual(run({dob:['1966-10-15','1960-01-01']}).N, 120));
+t('payment lag: pensions and State Pension start one month later, ISA income does not', () => {
+  const s = run({payLag:1});
+  near(s.months[0].p[0], 0); assert(s.months[1].p[0] > 0); near(s.months[84].q[0], 0); assert(s.months[85].q[0] > 0);
+  assert(s.months[0].isa > 0); near(s.spaM[0], 84, 1e-9, 'the legal State Pension date does not move');
+});
+t('payment lag: costs exactly one more month of spending net of the ISA income', () => {
+  // lowest point is just before State Pension. With a one-month lag it is one month later, so
+  // lowest(lag 1) = lowest(lag 0) + (ISA per month - monthly spending)
+  const a = summarise(run(), 'e').min, b = summarise(run({payLag:1}), 'e').min;
+  near(b, a + (760/12 - 1600), 1e-6);
+});
+t('ISA income stops when the pot is used up', () => {
+  const s = run({lump:20000, emergency:0, swr:20, growth:0});
+  near(s.isaYear, 4000); near(s.months[59].isa, 4000); near(s.months[60].isa, 0);
+  near(s.months.reduce((a,m) => a + m.isa/12, 0), 20000, 1e-6, 'never takes out more than was put in at 0% growth');
+});
+t('ISA income carries on while the pot lasts (growth keeps pace)', () => {
+  const s = run({lump:20000, emergency:0, swr:4, growth:3}); s.months.forEach(m => near(m.isa, 800, 1e-9));
+});
+const minAt = cash => summarise(run({cash}), 'e').min;
+t('assess: covered, tight and runs-out thresholds', () => {
+  const m0 = minAt(25000), need = c => c;                       // lowest point rises 1-for-1 with starting cash
+  const withMin = target => run({cash: 25000 + (target - m0)});
+  let a = assess(withMin(10000), 'e', 1600); assert.strictEqual(a.cls, 'good'); assert.strictEqual(a.code, 'covered');
+  a = assess(withMin(4799), 'e', 1600); assert.strictEqual(a.cls, 'warn'); assert.strictEqual(a.code, 'tight');
+  a = assess(withMin(4801), 'e', 1600); assert.strictEqual(a.cls, 'good');
+  a = assess(withMin(1), 'e', 1600); assert.strictEqual(a.cls, 'warn');
+  a = assess(withMin(-1), 'e', 1600); assert.strictEqual(a.cls, 'bad'); assert.strictEqual(a.code, 'runs-out');
+});
+t('assess: income below spending after the plan ends is not shown as covered', () => {
+  // Pensions never cover spending. A large pot gets through to the end but not for life.
+  const mk = cash => run({pension:[6000,0], sp:[5000,0], cash, lump:0, emergency:0, ess:1500, ideal:2000});
+  const lastsTo = a => (a.lastsToM == null ? Infinity : (a.lastsToM + mk(0).start - monthIdx('1966-10-15')) / 12);
+  let a = assess(mk(120000), 'e', 1500); assert.strictEqual(a.runOut, -1); assert.strictEqual(a.code, 'long-run'); assert.strictEqual(a.cls, 'bad'); assert(lastsTo(a) < 85);
+  const target = 90; let lo = 120000, hi = 600000; for (let k=0;k<60;k++){ const mid=(lo+hi)/2; const x = assess(mk(mid),'e',1500); if (lastsTo(x) < target) lo = mid; else hi = mid; }
+  a = assess(mk(hi), 'e', 1500); assert.strictEqual(a.cls, 'warn'); assert.strictEqual(a.code, 'long-run');
+  a = assess(mk(5e6), 'e', 1500); assert.strictEqual(a.cls, 'good');
+});
+t('assess: surplus after State Pension never triggers the long-run warning', () => assert.notStrictEqual(assess(run({cash:60000}), 'e', 1600).code, 'long-run'));
+t('neededExtra with a cushion needs more than without, and is minimal', () => {
+  const today = new Date().toISOString().slice(0,10), mk = () => Object.assign(base({dob:[H.minusYears(today,58), H.minusYears(today,58)], ess:1700}), {extra2:0});
+  const f = x => summarise(simulate(mk(), {extra2:x}), 'e').min;
+  const plain = neededExtra(mk(), 'e'), cushion = neededExtra(mk(), 'e', 5100);
+  assert(plain > 0 && cushion > plain, plain+' / '+cushion);
+  assert(f(cushion) >= 5100 - 1e-6); assert(f(cushion - 10) < 5100);
+});
+t('neededExtra: a plan that is covered but has no cushion needs nothing for coverage and something for the cushion', () => {
+  const today = new Date().toISOString().slice(0,10);
+  const mk = cash => Object.assign(base({dob:[H.minusYears(today,58), H.minusYears(today,58)], cash}), {extra2:0});
+  const min0 = summarise(simulate(mk(25000)), 'e').min;
+  const s = mk(25000 + 1000 - min0);                 // lowest point is exactly 1,000
+  near(summarise(simulate(s), 'e').min, 1000, 1e-6);
+  assert.strictEqual(neededExtra(s, 'e'), 0);
+  const c = neededExtra(s, 'e', 4800); assert(c > 0 && c < 2000, String(c));
+  assert(summarise(simulate(s, {extra2:c}), 'e').min >= 4800 - 1e-6); assert(summarise(simulate(s, {extra2:c-10}), 'e').min < 4800);
 });
 
 done('engine tests');

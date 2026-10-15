@@ -140,7 +140,8 @@ th{color:var(--muted);font-weight:700;font-size:.88rem}
 
 <script>
 /*ENGINE_START*/
-const END_AGE = 70;           // the plan stops when Person 1 reaches this age
+const END_AGE = 70;           // the plan runs at least until Person 1 reaches this age
+const COVER_AFTER_SPA = 36;   // ...and at least this many months after the later State Pension starts
 const PA_BASE = 12570;        // personal allowance
 const TAX_RATE = 0.20;        // basic rate only
 const HR_THRESHOLD = 50270;  // Marriage Allowance only helps a basic-rate taxpayer
@@ -168,7 +169,7 @@ function defaultState(){
     pension:[14000,0], pensionAge:[60,55], sp:[12547.60,9000],
     ess:1600, ideal:2200,
     cash:25000, lump:21000, emergency:2000, swr:4, invest:true,
-    inflation:0, cashReal:0, growth:3, marriage:false,
+    inflation:0, cashReal:0, growth:3, marriage:false, payLag:0,
     extra2:0, view:'e'
   };
 }
@@ -179,8 +180,8 @@ function simulate(s, o){
   const dobIdx = s.dob.map(monthIdx);
   const retire = dobIdx[0] + s.pensionAge[0]*12;
   const start = Math.max(retire, nowIdx);
-  const N = Math.max(12, dobIdx[0] + END_AGE*12 - start);
   const spaIdx = s.dob.map((d,i) => dobIdx[i] + spaMonths(d));
+  const N = Math.max(12, dobIdx[0] + END_AGE*12 - start, Math.max(spaIdx[0], spaIdx[1]) + COVER_AFTER_SPA - start);
   const penStart = [retire, dobIdx[1] + s.pensionAge[1]*12];
   const pen = [s.pension[0], s.pension[1] + (o.extra2 != null ? o.extra2 : (s.extra2 || 0))];
   const isaAmt = s.invest ? Math.max(0, s.lump - s.emergency) : 0;
@@ -188,6 +189,9 @@ function simulate(s, o){
   const isaYear = s.invest ? isaBase * s.swr/100 : 0;
   const buf0 = s.cash + (s.invest ? Math.min(s.emergency, s.lump) : s.lump);
   const rc = Math.pow(1 + s.cashReal/100, 1/12) - 1;
+  const lag = Math.max(0, Math.round(s.payLag || 0));   // months before the first pension payments arrive (paid in arrears)
+  // ISA income stops if the pot is used up (growth is above inflation, in today's money)
+  const isaTaken = s.invest ? lumpModel(isaAmt, isaYear, s.growth/100, Math.ceil(N/12), null).taken : null;
   const frozenYears = Math.max(0, (PA_FREEZE_END - nowIdx)/12);
   const buf = {e:buf0, i:buf0};
   const months = [];
@@ -197,8 +201,8 @@ function simulate(s, o){
     const PA = PA_BASE / Math.pow(1 + s.inflation/100, t);
     const p = [0,0], q = [0,0];
     for (let i=0; i<2; i++){
-      p[i] = idx >= penStart[i] ? pen[i] : 0;
-      q[i] = idx >= spaIdx[i] ? s.sp[i] : 0;
+      p[i] = idx >= penStart[i] + lag ? pen[i] : 0;
+      q[i] = idx >= spaIdx[i] + lag ? s.sp[i] : 0;
     }
     const gross = [p[0]+q[0], p[1]+q[1]];
     let tax = gross.map(x => Math.max(0, x - PA) * TAX_RATE);
@@ -223,7 +227,7 @@ function simulate(s, o){
       const k = gross[i] > 0 ? 1 - tax[i]/gross[i] : 1;
       p[i] *= k; q[i] *= k;      // spendable part of each source, tax shared pro rata
     }
-    const isa = isaYear;
+    const yr = Math.floor(m/12), isa = s.invest ? isaTaken[yr+1] - isaTaken[yr] : 0;
     const income = (p[0]+p[1]+q[0]+q[1]+isa)/12;
     const rec = {idx, p, q, tax, isa, income, PA, mSave};
     for (const sc of ['e','i']){
@@ -254,7 +258,7 @@ function simulate(s, o){
   }
   const spaM = spaIdx.map(x => x - start);
   const marriageTotal = months.reduce((t,r) => t + r.mSave/12, 0);
-  return {start, marriageTotal, N, months, rows, dobIdx, spaIdx, spaM, retire, buf0, isaAmt, isaYear,
+  return {start, marriageTotal, endAge:(start + N - dobIdx[0])/12, N, months, rows, dobIdx, spaIdx, spaM, retire, buf0, isaAmt, isaYear,
           spaAge: s.dob.map(spaMonths)};
 }
 
@@ -270,14 +274,32 @@ function summarise(sim, sc){
           incomeBeforeLastSpa: sim.months[Math.max(0, lastSpa-1)].income};
 }
 
-// Smallest extra yearly pension for Person 2 that keeps the savings from ever going below zero.
-function neededExtra(s, sc){
+// Smallest extra yearly pension for Person 2 that keeps the savings from ever going below `floor` (default zero).
+function neededExtra(s, sc, floor){
+  floor = floor || 0;
   const f = x => summarise(simulate(s, {extra2:x}), sc).min;
-  if (f(0) >= 0) return 0;
+  if (f(0) >= floor) return 0;
   let lo = 0, hi = 40000;
-  if (f(hi) < 0) return null;
-  for (let k=0; k<40; k++){ const mid = (lo+hi)/2; if (f(mid) >= 0) hi = mid; else lo = mid; }
+  if (f(hi) < floor) return null;
+  for (let k=0; k<40; k++){ const mid = (lo+hi)/2; if (f(mid) >= floor) hi = mid; else lo = mid; }
   return Math.ceil(hi/10)*10;
+}
+
+// Traffic light for one budget. 'bad' = savings run out (inside the plan, or soon after it ends because
+// income stays below spending). 'warn' = never below zero but under 3 months of spending, or runs out late.
+function assess(sim, sc, budget){
+  const s = summarise(sim, sc);
+  const endFlow = sim.months[sim.N-1].income - budget;
+  let cls = 'good', code = 'covered', lastsToM = null;
+  if (s.runOut >= 0){ cls = 'bad'; code = 'runs-out'; }
+  else {
+    if (endFlow < -0.5){ lastsToM = sim.N + s.end/(-endFlow); }
+    const lastsToAge = lastsToM == null ? Infinity : (sim.start + lastsToM - sim.dobIdx[0])/12;
+    if (lastsToAge < 85){ cls = 'bad'; code = 'long-run'; }
+    else if (lastsToAge < 95){ cls = 'warn'; code = 'long-run'; }
+    else if (s.min < budget*3){ cls = 'warn'; code = 'tight'; }
+  }
+  return Object.assign(s, {cls, code, endFlow, lastsToM});
 }
 
 // Lump sum: the same yearly withdrawal from the same pot, cash versus invested (today's money).
@@ -313,7 +335,8 @@ function load(){
 }
 const nm = i => S.names[i] || ('Person '+(i+1));
 const nmx = i => `<span data-name="${i}">${esc(nm(i))}</span>`;
-const budgetOf = sc => sc==='e' ? S.ess : S.ideal;
+const budgetOf = (sc, st) => (st||S)[sc==='e' ? 'ess' : 'ideal'];
+const endLbl = sim => Math.round(sim.endAge);
 const scName = sc => sc==='e' ? 'essentials' : 'your ideal lifestyle';
 
 /* ---------- tooltip ---------- */
@@ -367,7 +390,7 @@ function heroChart(el, sim, sc){
     defs.forEach(([k,label,col]) => {
       const v = r.src[k]; if (v <= 0.5) return;
       const y1 = y(acc+v), y0 = y(acc); acc += v;
-      g += `<rect x="${bx}" y="${y1}" width="${w}" height="${Math.max(0,y0-y1)}" fill="${col}" stroke="var(--surface)" stroke-width="2" data-tip="Age ${r.age0}: ${label} ${money(v)} a month (after tax)"/>`;
+      g += `<rect x="${bx}" y="${y1}" width="${w}" height="${Math.max(0,y0-y1)}" fill="${col}" stroke="var(--surface)" stroke-width="2" data-tip="Age ${r.age0}: ${esc(label)} ${money(v)} a month (after tax)"/>`;
     });
     g += `<text class="ax" x="${x0+bw/2}" y="${H-m.b+18}" text-anchor="middle">${r.age0}</text>`;
     if (!narrow) g += `<text class="ax" x="${x0+bw/2}" y="${H-m.b+36}" text-anchor="middle" opacity=".8">${r.page0}</text>`;
@@ -413,17 +436,11 @@ function potChart(el, sim){
     [['E','e','var(--c1)','Essentials'],['I','i','var(--c2)','Ideal']].forEach(([K,k,c,lab],j) => {
       const v = r.endBuf[k], bx = x0 + bw/2 + (j===0 ? -w-gap/2 : gap/2);
       const y0 = y(0), y1 = y(v);
-      g += `<rect x="${bx}" y="${Math.min(y0,y1)}" width="${w}" height="${Math.max(1,Math.abs(y0-y1))}" fill="${v<0?`url(#hatch${K})`:c}" stroke="${c}" stroke-width="${v<0?2:0}" rx="3" data-tip="${lab}: ${money(v)} saved by the end of the year when ${nm(0)} is ${Math.floor(r.age1)}"/>`;
+      g += `<rect x="${bx}" y="${Math.min(y0,y1)}" width="${w}" height="${Math.max(1,Math.abs(y0-y1))}" fill="${v<0?`url(#hatch${K})`:c}" stroke="${c}" stroke-width="${v<0?2:0}" rx="3" data-tip="${lab}: ${money(v)} saved by the end of the year when ${esc(nm(0))} is ${Math.floor(r.age1)}"/>`;
     });
     g += `<text class="ax" x="${x0+bw/2}" y="${H-m.b+18}" text-anchor="middle">${Math.floor(r.age1)}</text>`;
   });
   g += `<text class="ax" x="${m.l}" y="${H-8}">${esc(nm(0))}'s age at the end of each year</text>`;
-  // label the lowest point of each line
-  [['e','var(--c1)'],['i','var(--c2)']].forEach(([k,c]) => {
-    const s = summarise(sim, k), ri = Math.min(sim.rows.length-1, Math.floor(s.minM/12)), r = sim.rows[ri];
-    const bx = x(r.a) + (x(r.a+r.n)-x(r.a))/2 + (k==='e' ? -14 : 14), yy = y(r.endBuf[k]);
-    if (s.min >= 0 && s.min > 0.9*Math.max(...vals)) return;
-  });
   el.innerHTML = `<svg class="chart" viewBox="0 0 ${W} ${H}" role="img" aria-label="Savings left at the end of each year for essentials and ideal budgets">${g}</svg>`
     + `<div class="legend" style="margin-top:10px"><span><i style="background:var(--c1)"></i>Essentials only</span><span><i style="background:var(--c2)"></i>Ideal lifestyle</span><span><i style="background:repeating-linear-gradient(45deg,var(--ink) 0 2px,transparent 2px 5px)"></i>Hatched = overdrawn</span></div>`;
 }
@@ -459,16 +476,19 @@ function lineChart(el, o){
 }
 
 /* ---------- verdicts ---------- */
-function verdict(sim, sc){
-  const s = summarise(sim, sc), bud = budgetOf(sc);
-  const ageAt = mo => ageText(sim.rows.length ? (sim.start + mo - sim.dobIdx[0]) : 0);
-  const lowAge = ageAt(s.minM+1);
-  if (s.runOut >= 0){
-    const ro = ageAt(s.runOut+1);
-    const rec = s.end >= 0 ? `Your savings are back in credit by age ${END_AGE}.` : `Still ${money(-s.end)} short at age ${END_AGE}.`;
-    return {cls:'bad', icon:'✕', pill:'Savings run out', text:`Savings run out at age ${ro}. At the lowest point you are ${money(-s.min)} overdrawn (age ${lowAge}). ${rec}`, s};
+function verdict(sim, sc, st){
+  const bud = budgetOf(sc, st), s = assess(sim, sc, bud);
+  const ageAt = mo => ageText(sim.start + mo - sim.dobIdx[0]);
+  const lowAge = ageAt(s.minM+1), end = endLbl(sim);
+  if (s.code === 'runs-out'){
+    const rec = s.end >= 0 ? `Your savings are back in credit by age ${end}.` : `Still ${money(-s.end)} short at age ${end}.`;
+    return {cls:'bad', icon:'✕', pill:'Savings run out', text:`Savings run out at age ${ageAt(s.runOut+1)}. At the lowest point you are ${money(-s.min)} overdrawn (age ${lowAge}). ${rec}`, s};
   }
-  if (s.min < bud*3){
+  if (s.code === 'long-run'){
+    const to = ageText(sim.start + s.lastsToM - sim.dobIdx[0]);
+    return {cls:s.cls, icon:s.cls==='bad'?'✕':'!', pill:s.cls==='bad'?'Runs out later on':'Lasts, but not for life', text:`You get through to age ${end}, but even with State Pensions your income is ${money(-s.endFlow)} a month below spending. At that rate the savings run out around age ${to}.`, s};
+  }
+  if (s.code === 'tight'){
     return {cls:'warn', icon:'!', pill:'Only just covered', text:`You get through, but only ${money(s.min)} is left at the lowest point (age ${lowAge}). That is less than 3 months of spending, so one big bill could tip it.`, s};
   }
   return {cls:'good', icon:'✓', pill:'Covered', text:`Your savings never run out. The lowest point is ${money(s.min)} at age ${lowAge}.`, s};
@@ -484,15 +504,17 @@ const pages = {};
 
 pages.plan = {
   build(){ return `
-    <div><h1>Your plan at a glance</h1><p class="lead" style="margin-top:6px">From ${nmx(0)}'s retirement to age ${END_AGE}, in today's money. Tax is basic rate only.</p></div>
+    <div><h1>Your plan at a glance</h1><p class="lead" style="margin-top:6px">From ${nmx(0)}'s retirement to age <span id="planEnd"></span>, in today's money. Tax is basic rate only.</p></div>
     <div id="dobB"></div>
     <div class="grid2" id="verdicts"></div>
     <div class="grid3" id="kpis"></div>
     <section class="card"><h2 id="heroH"></h2><div id="hero"></div><p class="small">Hover or tap a block to see the amount. <a href="#pot">See the year-by-year savings</a>.</p></section>
+    <section class="card"><h2>How strong is this plan?</h2><p class="lead" id="stressLead"></p><div class="tablewrap" id="stress"></div></section>
     <section class="card"><h2>Things to know</h2><ul class="tidy" id="facts"></ul></section>`; },
   update(){
     const sim = simulate(S), sc = S.view, v = {e:verdict(sim,'e'), i:verdict(sim,'i')};
     $('#dobB').innerHTML = dobBanner();
+    $('#planEnd').textContent = endLbl(sim);
     $('#verdicts').innerHTML = ['e','i'].map(k => `<div class="card" style="${k===sc?'border-color:var(--accent);border-width:2px':''}"><div class="small">${k==='e'?'On essentials':'On your ideal lifestyle'} · ${money(budgetOf(k))} a month</div>${pillHTML(v[k])}<p>${v[k].text}</p></div>`).join('');
     const s = v[sc].s, bud = budgetOf(sc);
     $('#kpis').innerHTML = [
@@ -505,10 +527,18 @@ pages.plan = {
       ? `Before State Pension you are ${money(gap)} a month short of ${scName(sc)}. Afterwards you are ${money(s.incomeAfter-bud)} a month ahead.`
       : `Your pensions cover ${scName(sc)} from the first month, and the gap only grows once State Pensions start.`;
     heroChart($('#hero'), sim, sc);
+    const tests = [
+      ['As you entered it', {}],
+      ['First pension payments arrive a month late', {payLag:Math.max(S.payLag||0, 1)}],
+      ['Prices rise 2.5% a year (the tax-free allowance is frozen to 2031)', {inflation:Math.max(S.inflation, 2.5)}],
+      ['Spending 10% higher', {ess:S.ess*1.1, ideal:S.ideal*1.1}],
+      ['All three together', {payLag:Math.max(S.payLag||0, 1), inflation:Math.max(S.inflation, 2.5), ess:S.ess*1.1, ideal:S.ideal*1.1}]];
+    $('#stressLead').textContent = `A plan that only works when nothing goes wrong is not safe. Each row changes something for ${scName(sc)}. Red rows are the risks to plan for.`;
+    $('#stress').innerHTML = `<table><thead><tr><th>If…</th><th>Lowest savings</th><th>Result</th></tr></thead><tbody>${tests.map(([lab, o]) => { const st = {...S, ...o}, v = verdict(simulate(st), sc, st); return `<tr><td style="white-space:normal">${lab}</td><td class="${v.s.min<0?'neg':''}"><b>${money(v.s.min)}</b></td><td>${pillHTML(v)}</td></tr>`; }).join('')}</tbody></table>`;
     const f = [];
     f.push(spaLine(sim) + '.');
     f.push(`Your savings pot starts at <b>${money(sim.buf0)}</b> and pays the monthly shortfall until State Pensions start.`);
-    const un = [0,1].map(i => { const g0 = sim.months[0].p[i]/(1) + sim.months[0].tax[i]; return {i, g0, free: Math.max(0, PA_BASE - g0)}; }).filter(u => u.free > 1000);
+    const un = [0,1].map(i => { const g0 = sim.months[0].p[i] + sim.months[0].q[i] + sim.months[0].tax[i]; return {i, g0, free: Math.max(0, PA_BASE - g0)}; }).filter(u => u.free > 1000);
     un.forEach(u => f.push(`${nmx(u.i)} has about <b>${money(u.free)}</b> of tax-free allowance unused before State Pension starts. Pension income up to there is not taxed in this plan. <a href="#whatif">Try it on What if?</a>`));
     if (!S.marriage){ const ma = simulate({...S, marriage:true}); if (ma.marriageTotal >= 1) f.push(`Marriage Allowance could save about <b>${money(ma.marriageTotal)}</b> in tax by age ${END_AGE}. Switch it on under <a href="#whatif">What if?</a>.`); }
     else f.push(`Marriage Allowance is switched on: tax saved so far in this plan is ${money(sim.marriageTotal)}.`);
@@ -569,20 +599,21 @@ pages.whatif = {
     const ser = [{name:'Today\'s plan', color:'var(--muted)', pts:pts(base), dash:'6 5', width:2.5, short:'Today', hover:false}];
     if (S.extra2 > 0) ser.push({name:`With ${money(S.extra2)} extra`, color: sc==='e'?'var(--c1)':'var(--c2)', pts:pts(cur), short:'With extra'});
     else ser[0].color = sc==='e'?'var(--c1)':'var(--c2)', ser[0].dash = '';
-    lineChart($('#wChart'), {series:ser, xMin:Math.floor(pts(base)[0][0]), xMax:END_AGE, xStep:1, zero:true, xTitle:`${nm(0)}'s age`, endLabels:true, label:'Savings balance over time'});
+    lineChart($('#wChart'), {series:ser, xMin:Math.floor(pts(base)[0][0]), xMax:Math.ceil(cur.endAge), xStep:1, zero:true, xTitle:`${nm(0)}'s age`, endLabels:true, label:'Savings balance over time'});
     $('#wK').innerHTML = [
       [money(c.min), 'Lowest savings balance', c.min<0?'neg':''],
-      [money(c.end), `Savings at age ${END_AGE}`, c.end<0?'neg':''],
+      [money(c.end), `Savings at age ${endLbl(cur)}`, c.end<0?'neg':''],
       [c.runOut>=0 ? 'Age '+ageText(cur.start+c.runOut+1-cur.dobIdx[0]) : 'Never', 'Savings run out at', c.runOut>=0?'neg':'']
     ].map(k => `<div class="card kpi"><div class="v ${k[2]}">${k[0]}</div><div class="l">${k[1]}</div></div>`).join('');
     const ma = simulate({...S, marriage:true}), m0 = ma.months[0].mSave, m1 = ma.months[ma.N-1].mSave;
     $('#maTxt').innerHTML = ma.marriageTotal < 1
       ? 'No saving in this plan. It only helps when one of you pays no tax and the other pays basic-rate tax.'
-      : `Saves about <b>${money(m0)}</b> a year before State Pension, <b>${money(m1)}</b> a year after, and <b>${money(ma.marriageTotal)}</b> in total up to age ${END_AGE}. The lower earner claims it from HMRC, and it can usually be backdated.`;
-    const ne = neededExtra({...S, extra2:0}, 'e'), ni = neededExtra({...S, extra2:0}, 'i');
-    const need = (n, lab) => `<div class="card kpi"><div class="l">To cover ${lab}</div><div class="v">${n===null ? 'More than £40,000' : n===0 ? 'Nothing extra' : money(n)+' a year'}</div><div class="l">${n>0&&n!==null ? money(n/12)+' a month before tax' : n===0 ? 'Already covered' : 'a year is not enough'}</div></div>`;
-    $('#need').innerHTML = need(ne,'essentials') + need(ni,'your ideal lifestyle');
-    $('#needTxt').textContent = `The smallest yearly pension for ${nm(1)} that stops the savings pot ever going below zero. The bridge years are the problem, so this is mainly about the years before State Pension.`;
+      : `Saves about <b>${money(m0)}</b> a year before State Pension, <b>${money(m1)}</b> a year after, and <b>${money(ma.marriageTotal)}</b> in total up to age ${endLbl(ma)}. The lower earner claims it from HMRC, and it can usually be backdated.`;
+    const s0 = {...S, extra2:0};
+    const line = n => n===null ? 'More than £40,000 a year' : n===0 ? 'Nothing extra needed' : `${money(n)} a year (${money(n/12)} a month before tax)`;
+    const need = (sc, lab) => `<div class="card"><h3>${lab}</h3><div><div class="small">Just enough to never run out</div><b>${line(neededExtra(s0, sc))}</b></div><div><div class="small">With a cushion of 3 months' spending (${money(3*budgetOf(sc))})</div><b>${line(neededExtra(s0, sc, 3*budgetOf(sc)))}</b></div></div>`;
+    $('#need').innerHTML = need('e','Essentials only') + need('i','Ideal lifestyle');
+    $('#needTxt').textContent = `The smallest yearly pension for ${nm(1)} that stops the savings pot going below zero, or below the cushion. A plan with no cushion has no room for a surprise, so aim for the second figure.`;
   }
 };
 </script>
@@ -610,6 +641,13 @@ pages.lump = {
     $('#flow').innerHTML = `<div class="box"><span class="small">Your lump sum</span><b>${money(S.lump)}</b><span class="small">tax-free, paid when ${esc(nm(0))} retires</span></div><div class="arrow" aria-hidden="true">→</div>
       <div class="stack"><div class="box"><span class="small">Kept as cash for emergencies</span><b>${money(Math.min(S.emergency,S.lump))}</b></div><div class="box"><span class="small">Invested in a Stocks &amp; Shares ISA</span><b>${money(amt)}</b></div></div><div class="arrow" aria-hidden="true">→</div>
       <div class="box"><span class="small">Withdrawn each year (${S.swr}%), tax-free</span><b>${money(wd)}</b><span class="small">${money(wd/12,true)} a month, the same either way</span></div>`;
+    if (amt <= 0){
+      $('#lH').textContent = 'Nothing is going into the ISA';
+      $('#lChart').innerHTML = '<p class="lead">The lump sum is no bigger than the cash you keep. Raise the lump sum or lower the cash you keep on Your numbers.</p>';
+      $('#lNote').textContent = ''; $('#bH').textContent = ''; $('#bars').innerHTML = ''; $('#cmp').innerHTML = '';
+      $('#gr').value = S.growth; $('#grv').textContent = S.growth + '%'; $('#cr').value = S.cashReal; $('#crv').textContent = S.cashReal + '%';
+      return;
+    }
     const cashOut = cash.pot.findIndex(v => v <= 0.5);
     $('#lH').textContent = cashOut > 0 ? `As cash, the ${money(amt)} is gone by age ${age(cashOut)}. Invested, it is still ${money(inv.pot[years])} at age ${age(years)}.` : `Both versions last to age ${age(years)}, but invested leaves ${money(inv.pot[years]-cash.pot[years])} more.`;
     const mk = (m) => m.pot.map((v,y) => [age(y), v]);
@@ -622,7 +660,7 @@ pages.lump = {
     $('#lNote').textContent = `Same ${money(wd)} taken out every year in both cases, in today's money. Invested assumes ${S.growth}% a year above inflation; cash assumes ${S.cashReal}%.${stress?' The invested line includes a 25% fall in year one.':''}`;
     const tk = (m) => m.taken[years];
     const rows = [['Kept as cash', tk(cash), cash.pot[years], 'var(--c2)'], ['Invested', tk(inv), inv.pot[years], 'var(--c1)']];
-    const mx = Math.max(...rows.map(r => r[1]+r[2]));
+    const mx = Math.max(...rows.map(r => r[1]+r[2]), 1);
     $('#bH').textContent = `By age ${age(years)} investing gives ${money(rows[1][1]+rows[1][2]-rows[0][1]-rows[0][2])} more in total.`;
     $('#bars').innerHTML = rows.map(r => `<div style="display:grid;grid-template-columns:100px 1fr;gap:10px;align-items:center;margin-bottom:12px"><b>${r[0]}</b><div><div style="display:flex;height:34px;border-radius:6px;overflow:hidden;width:${(r[1]+r[2])/mx*100}%;min-width:4px"><div style="flex:${r[1]};background:${r[3]};opacity:.55" data-tip="Taken as income: ${money(r[1])}"></div><div style="flex:${Math.max(r[2],0)};background:${r[3]}" data-tip="Still invested: ${money(r[2])}"></div></div><div class="small">${money(r[1])} taken as income${r[2]>0.5?` + ${money(r[2])} still there`:''}</div></div></div>`).join('')
       + `<div class="legend"><span><i style="background:var(--ink);opacity:.45"></i>Taken out as income</span><span><i style="background:var(--ink)"></i>Still in the pot</span></div>`;
@@ -631,7 +669,7 @@ pages.lump = {
     const a = simulate({...S, invest:true}), b = simulate({...S, invest:false});
     const yrs = Math.round(a.N/12), a70 = lumpModel(amt, wd, g, yrs, fy).pot[yrs];
     const row = (lab, sim, potv, invested) => { const e = summarise(sim,'e'), i = summarise(sim,'i'); return `<tr><td>${lab}</td><td class="${e.min<0?'neg':''}">${money(e.min)}</td><td class="${i.min<0?'neg':''}">${money(i.min)}</td><td>${money(e.end+potv)}</td><td>${money(i.end+potv)}</td></tr>`; };
-    $('#cmp').innerHTML = `<p class="lead">Invested money is slower to reach than cash, but it is still there and still growing. Totals at age ${END_AGE} add the savings pot to the ISA.</p><div class="tablewrap"><table><thead><tr><th></th><th>Lowest savings (essentials)</th><th>Lowest savings (ideal)</th><th>Total at ${END_AGE} (essentials)</th><th>Total at ${END_AGE} (ideal)</th></tr></thead><tbody>${row('Invest the lump sum', a, a70)}${row('Keep it as cash', b, 0)}</tbody></table></div><div class="seg" role="group" aria-label="Lump sum choice" style="width:fit-content"><button type="button" id="invY" aria-pressed="${S.invest}">Use "Invest" in my plan</button><button type="button" id="invN" aria-pressed="${!S.invest}">Use "Keep as cash"</button></div>`;
+    $('#cmp').innerHTML = `<p class="lead">Invested money is slower to reach than cash, but it is still there and still growing. Totals at age ${endLbl(a)} add the savings pot to the ISA.</p><div class="tablewrap"><table><thead><tr><th></th><th>Lowest savings (essentials)</th><th>Lowest savings (ideal)</th><th>Total at ${endLbl(a)} (essentials)</th><th>Total at ${endLbl(a)} (ideal)</th></tr></thead><tbody>${row('Invest the lump sum', a, a70)}${row('Keep it as cash', b, 0)}</tbody></table></div><div class="seg" role="group" aria-label="Lump sum choice" style="width:fit-content"><button type="button" id="invY" aria-pressed="${S.invest}">Use "Invest" in my plan</button><button type="button" id="invN" aria-pressed="${!S.invest}">Use "Keep as cash"</button></div>`;
   }
 };
 
@@ -663,7 +701,8 @@ pages.numbers = {
       <section class="card"><h2>Assumptions</h2><div class="fields">
         ${num('inflation','Inflation, % a year','0 keeps prices flat. The tax-free allowance is frozen until April 2031, so more inflation means more tax.','')}
         ${num('cashReal','Interest on cash, above inflation, %','0 means savings just keep up with prices.','')}
-        ${num('growth','ISA growth, above inflation, %','Used on the Lump sum page only.','')}
+        ${num('growth','ISA growth, above inflation, %','Used to check the ISA can keep paying out, and on the Lump sum page.','')}
+        ${num('payLag','Months before first pension payments arrive','Pensions are paid in arrears. The first State Pension payment can come up to 5 weeks after it starts. Use 1 to be careful.','')}
         <div class="field"><label class="check"><input type="checkbox" data-flag="marriage"> We are married or in a civil partnership: use Marriage Allowance</label><div class="hint">One of you gives up £1,260 of tax-free allowance to the other. See What if? for how much it saves.</div></div>
       </div></section>
       <section class="card"><h2>How the sums work</h2><ul class="tidy">
@@ -671,8 +710,9 @@ pages.numbers = {
         <li>Marriage Allowance (when switched on) only applies in months when one of you has income at or below the tax-free allowance and the other is a basic-rate taxpayer. The giver's allowance falls by £1,260, so if their income is close to the allowance the saving is smaller. It is only used when it saves money overall. It has to be claimed from HMRC by the lower earner.</li>
         <li>Tax is 20% on each person's pension plus State Pension above ${money(PA_BASE)} a year. Higher-rate and Scottish tax are not modelled. All private pension is treated as taxable, so the tax-free 25% is not counted.</li>
         <li>State Pension age comes from the date of birth using the current England, Wales and Northern Ireland rules: 66 for those born up to 5 April 1960, then rising to 67 for those born from 6 March 1961, and 68 for those born from 6 April 1977.</li>
-        <li>The plan runs until ${esc(nm(0))} is ${END_AGE}. Only the lump sum page looks further, to age 90.</li>
-        <li>A plan is "covered" when the pot stays above 3 months of spending, "only just covered" when it stays above zero, and "runs out" when it goes below zero.</li>
+        <li>The plan runs until ${esc(nm(0))} is ${END_AGE}, or until 3 years after the later State Pension starts if that is later. Only the lump sum page looks further, to age 90. If income is still below spending at the end, the result says when the savings would run out.</li>
+        <li>Simplifications: income and tax are worked out month by month at the yearly rate, which can slightly overstate tax in the year a State Pension starts. Pensions start in the month of the birthday. Neither of you is assumed to earn a salary. Spending is flat in today's money, with no one-off costs, care costs or house moves. The ISA income stops if the pot would run out.</li>
+        <li>A plan is "covered" when the pot stays above 3 months of spending, "only just covered" when it stays above zero, and "runs out" when it goes below zero. It also turns amber or red if income stays below spending after the plan ends and the savings would run out before age 95 or 85.</li>
         <li>This is a planning aid, not regulated financial advice. Check pension figures with the scheme and State Pension ages on gov.uk.</li></ul></section>
       <section class="card"><h2>Reset</h2><p>Put every number back to the example values. This clears anything you have typed here.</p><div><button class="btn ghost" id="reset" type="button">Reset to example values</button></div></section>`; },
   update(){
@@ -681,7 +721,7 @@ pages.numbers = {
     $('#invY').setAttribute('aria-pressed', S.invest); $('#invN').setAttribute('aria-pressed', !S.invest);
     $('#isaOut').value = Math.max(0, S.lump - S.emergency);
     const sim = simulate(S);
-    [0,1].forEach(i => $('#spa'+i).innerHTML = `State Pension age ${ageText(sim.spaAge[i])}, from ${monthName(sim.spaIdx[i])}`);
+    [0,1].forEach(i => $('#spa'+i).innerHTML = `State Pension age ${ageText(sim.spaAge[i])}, from ${monthName(sim.spaIdx[i])}` + (S.dob[i] < '1954-10-06' ? ` <b class="neg">Born before 6 October 1954: different rules apply and are not modelled.</b>` : ''));
     const e = verdict(sim,'e'), i = verdict(sim,'i');
     $('#live').innerHTML = `<h2>Result so far</h2><div class="grid2"><div><div class="small">Essentials · ${money(S.ess)} a month</div>${pillHTML(e)}<p>${e.text}</p></div><div><div class="small">Ideal lifestyle · ${money(S.ideal)} a month</div>${pillHTML(i)}<p>${i.text}</p></div></div>`;
   },
@@ -726,7 +766,7 @@ function bindCommon(){
     el.addEventListener('input', () => {
       const k = el.dataset.key;
       if (el.type === 'number'){ let v = parseFloat(el.value); S[k.split('.')[0]] !== undefined && setPath(k, isFinite(v) ? Math.max(0, v) : 0); }
-      else { setPath(k, el.value); if (k.startsWith('dob.')) { if (!el.value) return; S.dobConfirmed = true; } }
+      else { if (k.startsWith('dob.') && !el.value) return; setPath(k, el.value); if (k.startsWith('dob.')) S.dobConfirmed = true; }
       save(); refresh();
     });
   });
