@@ -422,4 +422,50 @@ t('neededExtra: a plan that is covered but has no cushion needs nothing for cove
   assert(summarise(simulate(s, {extra2:c}), 'e').min >= 4800 - 1e-6); assert(summarise(simulate(s, {extra2:c-10}), 'e').min < 4800);
 });
 
+/* ---------- 12. Lump sum: split between savings pot and investment, with or without income ---------- */
+const annuity = (A, W, r, y) => r === 0 ? A - W*y : A*Math.pow(1+r,y) - W*(Math.pow(1+r,y)-1)/r;
+t('grow only: no income taken, pot compounds exactly, savings pot unchanged by the choice', () => {
+  const g = run({drawdown:false}), d = run({drawdown:true});
+  near(g.isaYear, 0); g.months.forEach(m => near(m.isa, 0)); near(g.buf0, d.buf0);
+  g.rows.forEach((r, y) => { near(r.isaEnd, 19000*Math.pow(1.03, y+1), 1e-6); near(r.isaStart, 19000*Math.pow(1.03, y), 1e-6); });
+  near(g.months[0].income, d.months[0].income - 760/12, 1e-9, 'income differs by exactly the ISA income');
+});
+t('grow only: lower income means the savings pot is lower by exactly the income that was not taken', () => {
+  const g = run({drawdown:false}), d = run({drawdown:true});
+  d.months.forEach((m, i) => near(m.e - g.months[i].e, 760/12 * (i+1), 1e-6));
+});
+t('with income: investment follows the annuity formula year by year', () => {
+  const d = run({drawdown:true}); d.rows.forEach((r, y) => near(r.isaEnd, annuity(19000, 760, 0.03, y+1), 1e-6, 'year '+(y+1)));
+});
+t('with income at 0% growth: pot plus income taken always equals what was put in', () => {
+  const d = run({drawdown:true, growth:0}); let taken = 0;
+  d.rows.forEach((r, y) => { taken += r.src.isa*12; near(r.isaEnd + taken, 19000, 1e-6); });
+});
+t('keeping it all as cash: no investment anywhere', () => {
+  const c = run({invest:false}); c.isaPot.forEach(v => near(v, 0)); c.rows.forEach(r => { near(r.isaEnd, 0); near(r.isaStart, 0); });
+});
+t('the split: everything to the savings pot, everything to the investment', () => {
+  const allCash = run({emergency:21000}); near(allCash.isaStart, 0); allCash.rows.forEach(r => near(r.isaEnd, 0)); near(allCash.buf0, 25000 + 21000); near(allCash.isaYear, 0);
+  const allInv = run({emergency:0, drawdown:false}); near(allInv.isaStart, 21000); near(allInv.buf0, 25000); near(allInv.rows[9].isaEnd, 21000*Math.pow(1.03,10), 1e-6);
+});
+t('split amounts always add up: savings pot top-up plus investment equals the lump sum', () => {
+  for (const e of [0, 500, 2000, 10000, 21000, 30000]) { const s = run({emergency:e}); near((s.buf0 - 25000) + s.isaStart, 21000, 1e-9, 'emergency '+e); }
+});
+t('the investment value never goes below zero and is flat at 0% growth with no income', () => {
+  run({drawdown:false, growth:0}).rows.forEach(r => near(r.isaEnd, 19000, 1e-9));
+  run({drawdown:true, swr:30, growth:0}).rows.forEach(r => assert(r.isaEnd >= 0));
+});
+for (let k = 0; k < 150; k++){
+  const s2 = randomState(); s2.growth = +pick(0, 7).toFixed(1); s2.drawdown = R() < .5;
+  t('random lump '+k+': investment value is consistent with its income and growth', () => {
+    const sim = simulate(s2, {nowIdx: nowFor(s2)});
+    const amt = s2.invest ? Math.max(0, s2.lump - s2.emergency) : 0;
+    near(sim.isaStart, amt, 1e-9); sim.rows.forEach(r => { assert(r.isaEnd >= -1e-9); assert(isFinite(r.isaEnd)); });
+    if (!s2.invest || amt === 0) sim.rows.forEach(r => near(r.isaEnd, 0, 1e-9));
+    if (s2.invest && !s2.drawdown){ sim.months.forEach(m => near(m.isa, 0)); let prev = amt; sim.rows.forEach(r => { assert(r.isaEnd >= prev - 1e-9); prev = r.isaEnd; }); }
+    if (s2.invest && s2.drawdown){ // money in the pot plus cumulative income, at zero growth, equals what went in
+      const z = simulate(Object.assign({}, s2, {growth:0}), {nowIdx: nowFor(s2)}); let tk = 0; z.rows.forEach(r => { tk += r.src.isa*12; near(r.isaEnd + tk, amt, 1e-5); }); }
+  });
+}
+
 done('engine tests');

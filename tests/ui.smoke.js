@@ -32,9 +32,34 @@ const t = async (n, f) => { try { await f(); pass++; } catch (e) { fail++; conso
   await t('extra pension slider moves the result and the "needed" boxes show amounts', async () => {
     await go('whatif'); const a = await txt('#wK .kpi .v'); await pg.fill('#x2', '6000'); const c = await txt('#wK .kpi .v');
     assert.notStrictEqual(a, c); assert(/£/.test(await txt('#need'))); });
-  await t('lump sum page: toggling choice changes the comparison and growth slider changes the chart', async () => {
+  await t('lump sum page: growth slider changes the chart, and the three choices switch the view', async () => {
     await go('lump'); const h1 = await txt('#lH'); await pg.fill('#gr', '6'); assert.notStrictEqual(h1, await txt('#lH'));
-    await pg.click('#invN'); assert.strictEqual(await pg.getAttribute('#invN','aria-pressed'), 'true'); });
+    assert.strictEqual(await pg.locator('#gTbl tbody tr').count() > 5, true); assert(/Paid to you/.test(await txt('#gTbl')), 'income column shows when taking an income');
+    await pg.click('.modeBtn[data-mode="grow"]'); assert.strictEqual(await pg.getAttribute('.modeBtn[data-mode="grow"]','aria-pressed'), 'true');
+    assert(!/Paid to you/.test(await txt('#gTbl'))); assert(await pg.locator('#swrBox').isHidden()); assert(await pg.locator('#barsWrap').isHidden());
+    assert(/grows to/.test(await txt('#gH')) && !/paying you/.test(await txt('#gH')));
+    await pg.click('.modeBtn[data-mode="cash"]'); assert(/No investment/.test(await txt('#gH'))); assert(await pg.locator('#splitBox').isHidden());
+    await pg.click('.modeBtn[data-mode="income"]'); assert(!(await pg.locator('#swrBox').isHidden())); });
+  await t('the split between savings pot and investment always adds up to the lump sum', async () => {
+    await go('lump'); await pg.click('.modeBtn[data-mode="grow"]');
+    const sum = async () => (+await pg.inputValue('#amtCash')) + (+await pg.inputValue('#amtInv'));
+    const lump = async () => (await pg.evaluate(() => JSON.parse(localStorage.getItem('retirement-bridge-v1')).lump || 0)) || +(await pg.evaluate(() => document.querySelector('#split').max));
+    await pg.fill('#split', '5000'); assert.strictEqual(await pg.inputValue('#amtInv'), '5000'); assert.strictEqual(await sum(), +await pg.evaluate(() => document.querySelector('#split').max));
+    await pg.fill('#amtCash', '3000'); assert.strictEqual(await sum(), +await pg.evaluate(() => document.querySelector('#split').max)); assert.strictEqual(await pg.inputValue('#amtCash'), '3000');
+    await pg.fill('#amtCash', '99999999'); assert.strictEqual(await pg.inputValue('#amtInv'), '0'); });
+  await t('the numbers page invest box and savings pot box follow each other and the choice shows there too', async () => {
+    await go('numbers'); const lump = +await pg.inputValue('[data-key="lump"]'); await pg.fill('#isaOut', '10000');
+    assert.strictEqual(+await pg.inputValue('[data-key="emergency"]'), lump - 10000);
+    await pg.click('.modeBtn[data-mode="grow"]'); await pg.click('a[data-p="lump"]'); await pg.waitForTimeout(100);
+    assert.strictEqual(await pg.getAttribute('.modeBtn[data-mode="grow"]','aria-pressed'), 'true'); });
+  await t('plans saved before the new option keep taking an income', async () => {
+    await go('numbers'); await pg.evaluate(() => localStorage.setItem('retirement-bridge-v1', JSON.stringify({invest:true, swr:4.35, ess:1500}))); await pg.reload(); await pg.waitForTimeout(150);
+    assert.strictEqual(await pg.getAttribute('.modeBtn[data-mode="income"]','aria-pressed'), 'true'); });
+  await t('lump sum smaller than the cash kept gives a clear message, not a broken chart', async () => {
+    await go('numbers'); await pg.fill('[data-key="lump"]', '1000'); await pg.fill('[data-key="emergency"]', '2000'); await pg.click('a[data-p="lump"]'); await pg.waitForTimeout(150);
+    assert(/Nothing is going into the investment/.test(await txt('#gH'))); assert(/Nothing to compare/.test(await txt('#lH'))); });
+  await t('the savings pot page shows the investment column when investing', async () => {
+    await go('pot'); assert(/Investment at year end/.test(await txt('#tbl'))); await pg.click('.modeBtn[data-mode="cash"]').catch(()=>{}); });
   await t('numbers persist in the browser after reload', async () => {
     await go('numbers'); await pg.fill('[data-key="ess"]', '1234'); await pg.reload(); await pg.waitForTimeout(150);
     assert.strictEqual(await pg.inputValue('[data-key="ess"]'), '1234'); });
@@ -54,9 +79,6 @@ const t = async (n, f) => { try { await f(); pass++; } catch (e) { fail++; conso
     await go('numbers'); await pg.fill('[data-key="names.0"]', '"><b onmouseover=1>Hi'); await pg.click('a[data-p="plan"]'); await pg.waitForTimeout(150);
     assert.strictEqual(await pg.locator('svg b').count(), 0); assert(await pg.locator('svg rect[data-tip]').count() > 5);
     assert.strictEqual(await pg.locator('main b[onmouseover]').count(), 0); });
-  await t('lump sum smaller than the cash kept gives a clear message, not a broken chart', async () => {
-    await go('numbers'); await pg.fill('[data-key="lump"]', '1000'); await pg.fill('[data-key="emergency"]', '2000'); await pg.click('a[data-p="lump"]'); await pg.waitForTimeout(150);
-    assert(/Nothing is going into the ISA/.test(await txt('#lH'))); });
   await t('a younger Person 2 stretches the plan and the plan page still renders', async () => {
     await go('numbers'); await pg.fill('[data-key="dob.1"]', '1976-10-15'); await pg.click('a[data-p="plan"]'); await pg.waitForTimeout(150);
     assert.strictEqual(await txt('#planEnd'), '80'); });

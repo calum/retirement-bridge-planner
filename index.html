@@ -28,6 +28,7 @@
   --c1:#3987e5; --c2:#d95926; --c3:#199e70; --c4:#c98500; --c5:#d55181; --c7:#9085e9;
   --shadow:none; color-scheme:dark}
 *{box-sizing:border-box}
+[hidden]{display:none!important}
 body{background:var(--bg);color:var(--ink);font:400 18px/1.55 var(--font-body);-webkit-text-size-adjust:100%}
 h1,h2,h3{font-family:var(--font-display);font-weight:700;line-height:1.2;margin:0;text-wrap:balance;letter-spacing:-.01em}
 h1{font-size:clamp(1.7rem,4.5vw,2.3rem)} h2{font-size:1.4rem} h3{font-size:1.1rem}
@@ -99,7 +100,7 @@ input[type=range]{width:100%;accent-color:var(--accent);height:34px}
 table{border-collapse:collapse;width:100%;font-variant-numeric:tabular-nums;font-size:.95rem}
 th,td{padding:8px 10px;text-align:right;border-bottom:1px solid var(--line);white-space:nowrap}
 th:first-child,td:first-child{text-align:left}
-th{color:var(--muted);font-weight:700;font-size:.88rem}
+th{color:var(--muted);font-weight:700;font-size:.88rem;white-space:normal;vertical-align:bottom}
 .tablewrap{overflow-x:auto}
 .flow{display:grid;grid-template-columns:1fr auto 1fr auto 1fr;gap:10px;align-items:stretch}
 .flow .box{border:2px solid var(--line);border-radius:12px;padding:12px;display:flex;flex-direction:column;gap:2px;background:var(--bg)}
@@ -107,6 +108,11 @@ th{color:var(--muted);font-weight:700;font-size:.88rem}
 .flow .arrow{align-self:center;font-size:1.6rem;color:var(--muted)}
 .flow .stack{display:flex;flex-direction:column;gap:10px}
 @media (max-width:640px){.flow{grid-template-columns:1fr}.flow .arrow{transform:rotate(90deg);justify-self:center}}
+.seg.modes{display:flex;flex-wrap:wrap;border-radius:16px;width:fit-content;max-width:100%}
+.seg.modes button{text-align:left}
+@media (max-width:640px){.seg.modes{flex-direction:column;width:100%}}
+.inset{background:var(--bg);border-radius:12px;padding:16px;display:flex;flex-direction:column;gap:16px}
+.two{display:grid;grid-template-columns:repeat(auto-fit,minmax(min(100%,200px),1fr));gap:14px}
 .check{display:flex;gap:12px;align-items:flex-start;font-weight:700;cursor:pointer}
 .check input{width:24px;height:24px;flex:none;accent-color:var(--accent);margin-top:2px}
 .sw{display:inline-block;width:12px;height:12px;border-radius:3px;margin-right:6px}
@@ -166,9 +172,9 @@ function defaultState(){
   return {
     names:['Person 1','Person 2'],
     dob:[minusYears(todayStr(),60), minusYears(todayStr(),60)], dobConfirmed:false,
-    pension:[14000,0], pensionAge:[60,55], sp:[12547.60,9000],
-    ess:1600, ideal:2200,
-    cash:25000, lump:21000, emergency:2000, swr:4, invest:true,
+    pension:[15000,0], pensionAge:[60,57], sp:[12547.60,12547.60],
+    ess:1500, ideal:2000,
+    cash:20000, lump:20000, emergency:2000, swr:4, invest:true, drawdown:true,
     inflation:0, cashReal:0, growth:3, marriage:false, payLag:0,
     extra2:0, view:'e'
   };
@@ -186,12 +192,14 @@ function simulate(s, o){
   const pen = [s.pension[0], s.pension[1] + (o.extra2 != null ? o.extra2 : (s.extra2 || 0))];
   const isaAmt = s.invest ? Math.max(0, s.lump - s.emergency) : 0;
   const isaBase = o.legacyIsa ? isaAmt + s.emergency : isaAmt;
-  const isaYear = s.invest ? isaBase * s.swr/100 : 0;
+  const isaYear = (s.invest && s.drawdown) ? isaBase * s.swr/100 : 0;   // yearly income taken from the investment
   const buf0 = s.cash + (s.invest ? Math.min(s.emergency, s.lump) : s.lump);
   const rc = Math.pow(1 + s.cashReal/100, 1/12) - 1;
   const lag = Math.max(0, Math.round(s.payLag || 0));   // months before the first pension payments arrive (paid in arrears)
-  // ISA income stops if the pot is used up (growth is above inflation, in today's money)
-  const isaTaken = s.invest ? lumpModel(isaAmt, isaYear, s.growth/100, Math.ceil(N/12), null).taken : null;
+  // The investment: grows each year (above inflation, in today's money) and pays the income above, if any.
+  // The income stops if the pot is used up.
+  const Y = Math.ceil(N/12);
+  const isaModel = s.invest ? lumpModel(isaAmt, isaYear, s.growth/100, Y, null) : {pot:new Array(Y+1).fill(0), taken:new Array(Y+1).fill(0)};
   const frozenYears = Math.max(0, (PA_FREEZE_END - nowIdx)/12);
   const buf = {e:buf0, i:buf0};
   const months = [];
@@ -227,7 +235,7 @@ function simulate(s, o){
       const k = gross[i] > 0 ? 1 - tax[i]/gross[i] : 1;
       p[i] *= k; q[i] *= k;      // spendable part of each source, tax shared pro rata
     }
-    const yr = Math.floor(m/12), isa = s.invest ? isaTaken[yr+1] - isaTaken[yr] : 0;
+    const yr = Math.floor(m/12), isa = isaModel.taken[yr+1] - isaModel.taken[yr];
     const income = (p[0]+p[1]+q[0]+q[1]+isa)/12;
     const rec = {idx, p, q, tax, isa, income, PA, mSave};
     for (const sc of ['e','i']){
@@ -250,7 +258,7 @@ function simulate(s, o){
     }
     const prev = a===0 ? {e:buf0, i:buf0} : months[a-1];
     const ageM = (st) => (start + st - dobIdx[0]);
-    rows.push({a, n, src, tax, mSave, income, avg:income/n,
+    rows.push({a, n, src, tax, mSave, income, avg:income/n, isaStart:isaModel.pot[a/12], isaEnd:isaModel.pot[a/12+1],
       age0:Math.floor(ageM(a)/12), age1:ageM(b)/12,
       page0:Math.floor((start + a - dobIdx[1])/12),
       startBuf:{e:prev.e, i:prev.i}, endBuf:{e:months[b-1].e, i:months[b-1].i},
@@ -258,7 +266,7 @@ function simulate(s, o){
   }
   const spaM = spaIdx.map(x => x - start);
   const marriageTotal = months.reduce((t,r) => t + r.mSave/12, 0);
-  return {start, marriageTotal, endAge:(start + N - dobIdx[0])/12, N, months, rows, dobIdx, spaIdx, spaM, retire, buf0, isaAmt, isaYear,
+  return {start, marriageTotal, endAge:(start + N - dobIdx[0])/12, isaPot:isaModel.pot, isaStart:isaAmt, N, months, rows, dobIdx, spaIdx, spaM, retire, buf0, isaAmt, isaYear,
           spaAge: s.dob.map(spaMonths)};
 }
 
@@ -330,6 +338,7 @@ function save(){ try{ localStorage.setItem(KEY, JSON.stringify(S)); }catch(e){} 
 function load(){
   const d = defaultState(); let saved = null;
   try{ saved = JSON.parse(localStorage.getItem(KEY)||'null'); }catch(e){}
+  if (saved && saved.invest !== undefined && saved.drawdown === undefined) saved.drawdown = true;   // older saves always took an income
   Object.assign(S, d, saved||{});
   if (!S.dobConfirmed) S.dob = d.dob;
 }
@@ -337,6 +346,10 @@ const nm = i => S.names[i] || ('Person '+(i+1));
 const nmx = i => `<span data-name="${i}">${esc(nm(i))}</span>`;
 const budgetOf = (sc, st) => (st||S)[sc==='e' ? 'ess' : 'ideal'];
 const endLbl = sim => Math.round(sim.endAge);
+const modeOf = st => st.invest ? (st.drawdown ? 'income' : 'grow') : 'cash';
+const MODES = [['cash','Keep it all as cash'],['grow','Split it, let the investment grow'],['income','Split it, take a yearly income']];
+const modeSeg = () => `<div class="seg modes" role="group" aria-label="What happens to the lump sum">${MODES.map(m => `<button type="button" class="modeBtn" data-mode="${m[0]}" aria-pressed="false">${m[1]}</button>`).join('')}</div>`;
+const setVal = (el, v) => { if (el && document.activeElement !== el) el.value = v; };
 const scName = sc => sc==='e' ? 'essentials' : 'your ideal lifestyle';
 
 /* ---------- tooltip ---------- */
@@ -542,6 +555,8 @@ pages.plan = {
     un.forEach(u => f.push(`${nmx(u.i)} has about <b>${money(u.free)}</b> of tax-free allowance unused before State Pension starts. Pension income up to there is not taxed in this plan. <a href="#whatif">Try it on What if?</a>`));
     if (!S.marriage){ const ma = simulate({...S, marriage:true}); if (ma.marriageTotal >= 1) f.push(`Marriage Allowance could save about <b>${money(ma.marriageTotal)}</b> in tax by age ${END_AGE}. Switch it on under <a href="#whatif">What if?</a>.`); }
     else f.push(`Marriage Allowance is switched on: tax saved so far in this plan is ${money(sim.marriageTotal)}.`);
+    if (S.invest && s.min < 0){ const val = sim.isaPot[Math.floor(s.minM/12)];
+      if (val > 0) f.push(`If the savings pot goes short, your investment (about <b>${money(val)}</b> at that point) could ${val >= -s.min ? 'cover' : 'cover part of'} the ${money(-s.min)} gap if you sold some. The plan keeps the investment separate, so it is not counted as savings. See <a href="#lump">Lump sum</a>.`); }
     f.push(`All figures are in today's money. The State Pension and pensions are assumed to keep up with prices.`);
     $('#facts').innerHTML = f.map(t => `<li>${t}</li>`).join('');
   }
@@ -562,9 +577,9 @@ pages.pot = {
     const sc = S.view, bud = budgetOf(sc);
     $('#tblNote').textContent = `Showing ${sc==='e'?'essentials only':'your ideal lifestyle'} (${money(bud)} a month). Use the switch at the top to change it. The last column shows the other budget.`;
     const other = sc==='e'?'i':'e';
-    $('#tbl').innerHTML = `<table><thead><tr><th>Year</th><th>${esc(nm(0))} age</th><th>${esc(nm(1))} age</th><th>In / month</th><th>Spend / month</th><th>From pot / year</th><th>Pot at year end</th><th>Pot (${other==='e'?'essentials':'ideal'})</th></tr></thead><tbody>`
+    $('#tbl').innerHTML = `<table><thead><tr><th>Year</th><th>${esc(nm(0))} age</th><th>${esc(nm(1))} age</th><th>In / month</th><th>Spend / month</th><th>From pot / year</th><th>Pot at year end</th><th>Pot (${other==='e'?'essentials':'ideal'})</th>${S.invest?'<th>Investment at year end</th>':''}</tr></thead><tbody>`
       + sim.rows.map((r,k) => { const flow = (r.endBuf[sc]-r.startBuf[sc]);
-        return `<tr><td>Year ${k+1}${r.n<12?' (part)':''}</td><td>${r.age0}</td><td>${r.page0}</td><td>${money(r.avg)}</td><td>${money(bud)}</td><td class="${flow<0?'neg':'pos'}">${flow<0?'−':'+'}${money(Math.abs(flow))}</td><td class="${r.endBuf[sc]<0?'neg':''}"><b>${money(r.endBuf[sc])}</b></td><td class="${r.endBuf[other]<0?'neg':''}">${money(r.endBuf[other])}</td></tr>`; }).join('')
+        return `<tr><td>Year ${k+1}${r.n<12?' (part)':''}</td><td>${r.age0}</td><td>${r.page0}</td><td>${money(r.avg)}</td><td>${money(bud)}</td><td class="${flow<0?'neg':'pos'}">${flow<0?'−':'+'}${money(Math.abs(flow))}</td><td class="${r.endBuf[sc]<0?'neg':''}"><b>${money(r.endBuf[sc])}</b></td><td class="${r.endBuf[other]<0?'neg':''}">${money(r.endBuf[other])}</td>${S.invest?`<td>${money(r.isaEnd)}</td>`:''}</tr>`; }).join('')
       + `</tbody></table>`;
   }
 };
@@ -576,8 +591,7 @@ pages.whatif = {
     <section class="card">
       <div class="sliderrow"><div class="top"><label for="x2"><b style="font-size:1.15rem">${nmx(1)} draws extra pension</b></label><b id="x2v"></b></div>
         <input type="range" id="x2" min="0" max="12570" step="50"><span class="small" id="x2m"></span></div>
-      <div class="sliderrow"><div class="top"><label for="inv"><b style="font-size:1.15rem">What happens to the lump sum?</b></label></div>
-        <div class="seg" role="group" aria-label="Lump sum choice" style="width:fit-content"><button type="button" id="invY" aria-pressed="true">Invest in ISA</button><button type="button" id="invN" aria-pressed="false">Keep as cash</button></div></div>
+      <div class="sliderrow"><div class="top"><b style="font-size:1.15rem">What happens to the lump sum?</b></div>${modeSeg()}</div>
     </section>
     <section class="card"><label class="check"><input type="checkbox" data-flag="marriage"> Use Marriage Allowance (we are married or in a civil partnership)</label><p id="maTxt"></p></section>
     <section class="card"><h2 id="wH"></h2><div id="wChart"></div></section>
@@ -588,7 +602,6 @@ pages.whatif = {
     $('#dobB').innerHTML = dobBanner();
     $('#x2').value = S.extra2; $('#x2v').textContent = money(S.extra2)+' a year';
     $('#x2m').textContent = `${money(S.extra2/12)} a month before tax. ${nm(1)} pays 20% on anything above ${money(PA_BASE)} a year, counting State Pension.`;
-    $('#invY').setAttribute('aria-pressed', S.invest); $('#invN').setAttribute('aria-pressed', !S.invest);
     const b = summarise(base, sc), c = summarise(cur, sc);
     const delta = c.min - b.min;
     $('#wH').textContent = S.extra2 > 0
@@ -620,56 +633,101 @@ pages.whatif = {
 <script>
 pages.lump = {
   build(){ return `
-    <div><h1>The lump sum: invest it or keep it as cash?</h1><p class="lead" style="margin-top:6px">Take the same amount out of the pot each year. The only thing that differs is where the money sits while you wait.</p></div>
-    <section class="card"><h2>How it works</h2><div class="flow" id="flow"></div></section>
-    <section class="card"><h2 id="lH"></h2><div id="lChart"></div><p class="small" id="lNote"></p></section>
-    <section class="card"><h2 id="bH"></h2><div id="bars"></div></section>
+    <div><h1>The lump sum</h1><p class="lead" style="margin-top:6px">Choose what happens to your tax-free lump sum and see what it does over the plan.</p></div>
+    <section class="card"><h2>What should happen to it?</h2>${modeSeg()}<p id="modeTxt"></p>
+      <div class="inset" id="splitBox">
+        <div class="sliderrow"><div class="top"><label for="split"><b style="font-size:1.1rem">How much goes into the investment?</b></label><b id="splitV"></b></div><input type="range" id="split" min="0" max="18000" step="50"></div>
+        <div class="two">
+          <div class="field"><label for="amtCash">Into the savings pot</label><div class="inp"><span>£</span><input id="amtCash" type="number" inputmode="decimal" min="0" step="any"></div></div>
+          <div class="field"><label for="amtInv">Into the investment</label><div class="inp"><span>£</span><input id="amtInv" type="number" inputmode="decimal" min="0" step="any"></div></div>
+        </div>
+        <div class="sliderrow" id="swrBox"><div class="top"><label for="swr"><b style="font-size:1.1rem">Yearly income taken from the investment</b></label><b id="swrV"></b></div><input type="range" id="swr" min="1" max="8" step="0.25"><span class="small" id="swrNote"></span></div>
+      </div></section>
+    <section class="card" id="growCard"><h2 id="gH"></h2><div id="gChart"></div><p class="small" id="gNote"></p><div class="tablewrap" id="gTbl"></div></section>
+    <section class="card"><h2 id="lH"></h2><div id="lChart"></div><p class="small" id="lNote"></p><div id="barsWrap"><h3 id="bH"></h3><div id="bars"></div></div></section>
     <section class="card"><h2>Try different assumptions</h2>
-      <div class="sliderrow"><div class="top"><label for="gr"><b style="font-size:1.1rem">Growth of the invested money, above inflation</b></label><b id="grv"></b></div><input type="range" id="gr" min="0" max="6" step="0.5"></div>
+      <div class="sliderrow"><div class="top"><label for="gr"><b style="font-size:1.1rem">Growth of the investment, above inflation</b></label><b id="grv"></b></div><input type="range" id="gr" min="0" max="6" step="0.5"></div>
       <div class="sliderrow"><div class="top"><label for="cr"><b style="font-size:1.1rem">Interest on cash, above inflation</b></label><b id="crv"></b></div><input type="range" id="cr" min="-2" max="3" step="0.5"></div>
-      <label style="display:flex;gap:10px;align-items:center;font-weight:700"><input type="checkbox" id="stress" style="width:22px;height:22px;accent-color:var(--accent)"> Bad start: markets fall 25% in the first year</label>
-      <p class="small">Cash after inflation usually earns close to nothing. Shares and bonds have grown faster over long periods, but with bad years along the way. The shaded band shows 3 points lower to 2 points higher.</p>
+      <label class="check"><input type="checkbox" id="stress"> Bad start: markets fall 25% in the first year (charts on this page only)</label>
+      <p class="small">Cash after inflation usually earns close to nothing. Shares and bonds have grown faster over long periods, but with bad years along the way. The shaded band on the long chart shows 3 points lower to 2 points higher.</p>
     </section>
-    <section class="card"><h2>What this means for your whole plan</h2><div id="cmp"></div></section>`; },
+    <section class="card"><h2>All three choices side by side</h2><div id="cmp"></div></section>`; },
   update(){
-    const sim0 = simulate({...S, invest:true}), amt = sim0.isaAmt, wd = amt*S.swr/100;
-    const startAge = (sim0.start - sim0.dobIdx[0])/12;
-    const years = Math.max(10, Math.round(90 - startAge)), age = y => Math.round(startAge) + y;
-    const g = S.growth/100, rc = S.cashReal/100;
-    const stress = $('#stress') && $('#stress').checked, fy = stress ? -0.25 : null;
-    const inv = lumpModel(amt, wd, g, years, fy), lo = lumpModel(amt, wd, g-0.03, years, fy), hi = lumpModel(amt, wd, g+0.02, years, fy), cash = lumpModel(amt, wd, rc, years, null);
-    $('#flow').innerHTML = `<div class="box"><span class="small">Your lump sum</span><b>${money(S.lump)}</b><span class="small">tax-free, paid when ${esc(nm(0))} retires</span></div><div class="arrow" aria-hidden="true">→</div>
-      <div class="stack"><div class="box"><span class="small">Kept as cash for emergencies</span><b>${money(Math.min(S.emergency,S.lump))}</b></div><div class="box"><span class="small">Invested in a Stocks &amp; Shares ISA</span><b>${money(amt)}</b></div></div><div class="arrow" aria-hidden="true">→</div>
-      <div class="box"><span class="small">Withdrawn each year (${S.swr}%), tax-free</span><b>${money(wd)}</b><span class="small">${money(wd/12,true)} a month, the same either way</span></div>`;
-    if (amt <= 0){
-      $('#lH').textContent = 'Nothing is going into the ISA';
-      $('#lChart').innerHTML = '<p class="lead">The lump sum is no bigger than the cash you keep. Raise the lump sum or lower the cash you keep on Your numbers.</p>';
-      $('#lNote').textContent = ''; $('#bH').textContent = ''; $('#bars').innerHTML = ''; $('#cmp').innerHTML = '';
-      $('#gr').value = S.growth; $('#grv').textContent = S.growth + '%'; $('#cr').value = S.cashReal; $('#crv').textContent = S.cashReal + '%';
-      return;
+    const mode = modeOf(S), sim = simulate(S), sc = S.view;
+    const lump = Math.max(0, S.lump), cashIn = Math.min(Math.max(0, S.emergency), lump), amt = lump - cashIn;
+    const income = mode === 'income', wdPlan = income ? amt*S.swr/100 : 0;
+    const startAge = (sim.start - sim.dobIdx[0])/12, g = S.growth/100, rc = S.cashReal/100;
+    const crash = $('#stress') && $('#stress').checked ? -0.25 : null;
+    $('#modeTxt').textContent = {cash:`All ${money(lump)} goes into your savings pot. There is no investment.`,
+      grow:`${money(cashIn)} goes into your savings pot and ${money(amt)} is invested. Nothing is taken out, so the investment just grows.`,
+      income:`${money(cashIn)} goes into your savings pot and ${money(amt)} is invested. You take ${S.swr}% a year (${money(amt*S.swr/100)}) from it as extra income.`}[mode];
+    $('#splitBox').hidden = mode === 'cash'; $('#swrBox').hidden = !income;
+    $('#split').max = lump; setVal($('#split'), amt); $('#splitV').textContent = money(amt) + ' invested';
+    setVal($('#amtCash'), cashIn); setVal($('#amtInv'), amt);
+    setVal($('#swr'), S.swr); $('#swrV').textContent = S.swr + '%'; $('#swrNote').textContent = `${money(amt*S.swr/100)} a year, ${money(amt*S.swr/1200, true)} a month, tax-free from an ISA.`;
+    setVal($('#gr'), S.growth); $('#grv').textContent = S.growth + '%'; setVal($('#cr'), S.cashReal); $('#crv').textContent = S.cashReal + '%';
+    const end = endLbl(sim);
+
+    /* --- how the investment grows during the plan --- */
+    if (mode === 'cash' || amt <= 0){
+      $('#gH').textContent = mode === 'cash' ? 'No investment in this choice' : 'Nothing is going into the investment';
+      $('#gChart').innerHTML = `<p class="lead">${mode === 'cash' ? 'Choose a split above to see how an investment would grow during your plan.' : 'The savings pot amount is the whole lump sum. Lower it, or raise the lump sum on Your numbers.'}</p>`;
+      $('#gNote').textContent = ''; $('#gTbl').innerHTML = '';
+    } else {
+      const years = sim.rows.length, inv = lumpModel(amt, wdPlan, g, years, crash);
+      const ptsInv = inv.pot.map((v,y) => [y===0 ? startAge : sim.rows[y-1].age1, v]);
+      const ptsPot = [[startAge, sim.buf0]].concat(sim.rows.map(r => [r.age1, r.endBuf[sc]]));
+      const ptsAll = ptsInv.map((p,i) => [p[0], p[1] + ptsPot[i][1]]);
+      const last = inv.pot[years], taken = inv.taken[years];
+      $('#gH').textContent = `Your ${money(amt)} investment grows to ${money(last)} by age ${end}${income ? `, after paying you ${money(taken)}` : ''}.`;
+      lineChart($('#gChart'), {series:[
+        {name:'Investment', color:'var(--c1)', pts:ptsInv, short:'Investment'},
+        {name:'Savings pot', color:'var(--c3)', pts:ptsPot, short:'Savings pot'},
+        {name:'Both together', color:'var(--ink)', pts:ptsAll, dash:'6 5', width:2.5, short:'Together'}],
+        xMin:Math.floor(startAge), xMax:Math.ceil(sim.endAge), xStep:1, zero:true, endLabels:true, xTitle:`${nm(0)}'s age`, label:'Investment value, savings pot and the two together over the plan'});
+      $('#gNote').textContent = `Savings pot shown for ${sc==='e'?'essentials only':'your ideal lifestyle'}. Together, the pot and the investment are worth ${money(last + sim.rows[years-1].endBuf[sc])} at age ${end}. Growth assumed: ${S.growth}% a year above inflation, so these are today's pounds.${crash ? ' This includes a 25% fall in the first year.' : ''}`;
+      $('#gTbl').innerHTML = `<table><thead><tr><th>Year</th><th>${esc(nm(0))} age</th><th>Investment at start</th><th>Growth</th>${income?'<th>Paid to you</th>':''}<th>Investment at end</th><th>Savings pot</th><th>Both together</th></tr></thead><tbody>`
+        + sim.rows.map((r,y) => { const st = inv.pot[y], en = inv.pot[y+1], tk = inv.taken[y+1] - inv.taken[y], pot = r.endBuf[sc];
+          return `<tr><td>Year ${y+1}</td><td>${r.age0}</td><td>${money(st)}</td><td class="pos">+${money(en - st + tk)}</td>${income?`<td>${money(tk)}</td>`:''}<td><b>${money(en)}</b></td><td class="${pot<0?'neg':''}">${money(pot)}</td><td class="${en+pot<0?'neg':''}">${money(en + pot)}</td></tr>`; }).join('') + `</tbody></table>`;
     }
+
+    /* --- long view to age 90: invested versus cash --- */
+    if (amt <= 0){
+      $('#lH').textContent = 'Nothing to compare yet';
+      $('#lChart').innerHTML = '<p class="lead">The lump sum is no bigger than the amount going into the savings pot. Lower that amount to compare investing with cash.</p>';
+      $('#lNote').textContent = ''; $('#barsWrap').hidden = true; $('#cmp').innerHTML = ''; return;
+    }
+    const years = Math.max(10, Math.round(90 - startAge)), age = y => Math.round(startAge) + y, wd = income ? amt*S.swr/100 : 0;
+    const inv = lumpModel(amt, wd, g, years, crash), lo = lumpModel(amt, wd, g-0.03, years, crash), hi = lumpModel(amt, wd, g+0.02, years, crash), cash = lumpModel(amt, wd, rc, years, null);
     const cashOut = cash.pot.findIndex(v => v <= 0.5);
-    $('#lH').textContent = cashOut > 0 ? `As cash, the ${money(amt)} is gone by age ${age(cashOut)}. Invested, it is still ${money(inv.pot[years])} at age ${age(years)}.` : `Both versions last to age ${age(years)}, but invested leaves ${money(inv.pot[years]-cash.pot[years])} more.`;
-    const mk = (m) => m.pot.map((v,y) => [age(y), v]);
-    const markers = cashOut > 0 ? [{x:age(cashOut), y:0, color:'var(--c2)', label:`Cash runs out, age ${age(cashOut)}`}] : [];
+    $('#lH').textContent = income
+      ? (cashOut > 0 ? `As cash, the ${money(amt)} is gone by age ${age(cashOut)}. Invested, it is still ${money(inv.pot[years])} at age ${age(years)}.` : `Both versions last to age ${age(years)}, but invested leaves ${money(inv.pot[years]-cash.pot[years])} more.`)
+      : `Invested, the ${money(amt)} grows to ${money(inv.pot[years])} by age ${age(years)}. As cash it would be ${money(cash.pot[years])}.`;
+    const mk = m => m.pot.map((v,y) => [age(y), v]);
     lineChart($('#lChart'), {series:[
       {name:'Kept as cash', color:'var(--c2)', pts:mk(cash), short:'Cash'},
       {name:'Invested', color:'var(--c1)', pts:mk(inv), short:'Invested'}],
       band:{lo:mk(lo), hi:mk(hi), color:'var(--c1)', label:'Invested: range if markets do worse or better'},
-      markers, xMin:age(0), xMax:age(years), xStep:5, zero:true, endLabels:true, xTitle:`${nm(0)}'s age`, label:'Value of the lump sum over time, cash versus invested', h:380});
-    $('#lNote').textContent = `Same ${money(wd)} taken out every year in both cases, in today's money. Invested assumes ${S.growth}% a year above inflation; cash assumes ${S.cashReal}%.${stress?' The invested line includes a 25% fall in year one.':''}`;
-    const tk = (m) => m.taken[years];
-    const rows = [['Kept as cash', tk(cash), cash.pot[years], 'var(--c2)'], ['Invested', tk(inv), inv.pot[years], 'var(--c1)']];
-    const mx = Math.max(...rows.map(r => r[1]+r[2]), 1);
-    $('#bH').textContent = `By age ${age(years)} investing gives ${money(rows[1][1]+rows[1][2]-rows[0][1]-rows[0][2])} more in total.`;
-    $('#bars').innerHTML = rows.map(r => `<div style="display:grid;grid-template-columns:100px 1fr;gap:10px;align-items:center;margin-bottom:12px"><b>${r[0]}</b><div><div style="display:flex;height:34px;border-radius:6px;overflow:hidden;width:${(r[1]+r[2])/mx*100}%;min-width:4px"><div style="flex:${r[1]};background:${r[3]};opacity:.55" data-tip="Taken as income: ${money(r[1])}"></div><div style="flex:${Math.max(r[2],0)};background:${r[3]}" data-tip="Still invested: ${money(r[2])}"></div></div><div class="small">${money(r[1])} taken as income${r[2]>0.5?` + ${money(r[2])} still there`:''}</div></div></div>`).join('')
-      + `<div class="legend"><span><i style="background:var(--ink);opacity:.45"></i>Taken out as income</span><span><i style="background:var(--ink)"></i>Still in the pot</span></div>`;
-    $('#gr').value = S.growth; $('#grv').textContent = S.growth + '%'; $('#cr').value = S.cashReal; $('#crv').textContent = S.cashReal + '%';
-    // whole-plan comparison
-    const a = simulate({...S, invest:true}), b = simulate({...S, invest:false});
-    const yrs = Math.round(a.N/12), a70 = lumpModel(amt, wd, g, yrs, fy).pot[yrs];
-    const row = (lab, sim, potv, invested) => { const e = summarise(sim,'e'), i = summarise(sim,'i'); return `<tr><td>${lab}</td><td class="${e.min<0?'neg':''}">${money(e.min)}</td><td class="${i.min<0?'neg':''}">${money(i.min)}</td><td>${money(e.end+potv)}</td><td>${money(i.end+potv)}</td></tr>`; };
-    $('#cmp').innerHTML = `<p class="lead">Invested money is slower to reach than cash, but it is still there and still growing. Totals at age ${endLbl(a)} add the savings pot to the ISA.</p><div class="tablewrap"><table><thead><tr><th></th><th>Lowest savings (essentials)</th><th>Lowest savings (ideal)</th><th>Total at ${endLbl(a)} (essentials)</th><th>Total at ${endLbl(a)} (ideal)</th></tr></thead><tbody>${row('Invest the lump sum', a, a70)}${row('Keep it as cash', b, 0)}</tbody></table></div><div class="seg" role="group" aria-label="Lump sum choice" style="width:fit-content"><button type="button" id="invY" aria-pressed="${S.invest}">Use "Invest" in my plan</button><button type="button" id="invN" aria-pressed="${!S.invest}">Use "Keep as cash"</button></div>`;
+      markers: income && cashOut > 0 ? [{x:age(cashOut), y:0, color:'var(--c2)', label:`Cash runs out, age ${age(cashOut)}`}] : [],
+      xMin:age(0), xMax:age(years), xStep:5, zero:true, endLabels:true, xTitle:`${nm(0)}'s age`, label:'Value of the invested amount over time, cash versus invested', h:380});
+    $('#lNote').textContent = income
+      ? `Same ${money(wd)} taken out every year in both cases, in today's money. Invested assumes ${S.growth}% a year above inflation; cash assumes ${S.cashReal}%.${crash?' The invested line includes a 25% fall in year one.':''}`
+      : `Nothing is taken out. Invested assumes ${S.growth}% a year above inflation; cash assumes ${S.cashReal}%.${crash?' The invested line includes a 25% fall in year one.':''}`;
+    $('#barsWrap').hidden = !income;
+    if (income){
+      const rows = [['Kept as cash', cash.taken[years], cash.pot[years], 'var(--c2)'], ['Invested', inv.taken[years], inv.pot[years], 'var(--c1)']];
+      const mx = Math.max(...rows.map(r => r[1]+r[2]), 1);
+      $('#bH').textContent = `By age ${age(years)} investing gives ${money(rows[1][1]+rows[1][2]-rows[0][1]-rows[0][2])} more in total.`;
+      $('#bars').innerHTML = rows.map(r => `<div style="display:grid;grid-template-columns:100px 1fr;gap:10px;align-items:center;margin-bottom:12px"><b>${r[0]}</b><div><div style="display:flex;height:34px;border-radius:6px;overflow:hidden;width:${(r[1]+r[2])/mx*100}%;min-width:4px"><div style="flex:${Math.max(r[1],0)};background:${r[3]};opacity:.55" data-tip="Taken as income: ${money(r[1])}"></div><div style="flex:${Math.max(r[2],0)};background:${r[3]}" data-tip="Still invested: ${money(r[2])}"></div></div><div class="small">${money(r[1])} taken as income${r[2]>0.5?` + ${money(r[2])} still there`:''}</div></div></div>`).join('')
+        + `<div class="legend"><span><i style="background:var(--ink);opacity:.45"></i>Taken out as income</span><span><i style="background:var(--ink)"></i>Still in the pot</span></div>`;
+    }
+
+    /* --- all three choices through the whole plan --- */
+    const opts = [['cash','Keep it all as cash',{invest:false}], ['grow','Split it, let the investment grow',{invest:true, drawdown:false}], ['income','Split it, take a yearly income',{invest:true, drawdown:true}]];
+    $('#cmp').innerHTML = `<p class="lead">What each choice does to the plan, at the growth you chose above. "Together" adds the investment to the savings pot at age ${end}.</p><div class="tablewrap"><table><thead><tr><th></th><th>Lowest pot (essentials)</th><th>Lowest pot (ideal)</th><th>Investment at ${end}</th><th>Together (essentials)</th><th>Together (ideal)</th></tr></thead><tbody>`
+      + opts.map(([k, lab, o]) => { const sm = simulate({...S, ...o}), e = summarise(sm,'e'), i = summarise(sm,'i'), iv = sm.isaPot[sm.isaPot.length-1];
+        return `<tr style="${k===mode?'font-weight:700;background:var(--accent-soft)':''}"><td>${lab}${k===mode?' (your choice)':''}</td><td class="${e.min<0?'neg':''}">${money(e.min)}</td><td class="${i.min<0?'neg':''}">${money(i.min)}</td><td>${money(iv)}</td><td class="${e.end+iv<0?'neg':''}">${money(e.end+iv)}</td><td class="${i.end+iv<0?'neg':''}">${money(i.end+iv)}</td></tr>`; }).join('')
+      + `</tbody></table></div>`;
   }
 };
 
@@ -693,10 +751,10 @@ pages.numbers = {
       <section class="card"><h2>Savings and the lump sum</h2><div class="fields">
         ${num('cash','Cash savings today','Easy-access savings.','£')}
         ${num('lump','Tax-free lump sum','Paid to '+esc(nm(0))+' on retirement.','£')}
-        ${num('emergency','Keep this much of it as cash','The rest goes into the ISA.','£')}
-        <div class="field"><label>Goes into the ISA</label><div class="inp"><span>£</span><input id="isaOut" readonly tabindex="-1"></div><div class="hint">Lump sum minus the cash you keep.</div></div>
-        ${num('swr','Yearly withdrawal from the ISA, %','Of the amount first invested. 4% is the usual guide for a long retirement.','')}
-        <div class="field"><label>Lump sum choice</label><div class="seg" role="group" aria-label="Lump sum choice" style="width:fit-content"><button type="button" id="invY" aria-pressed="true">Invest in ISA</button><button type="button" id="invN" aria-pressed="false">Keep as cash</button></div><div class="hint">See the Lump sum page for the difference.</div></div>
+        ${num('emergency','Put this much in the savings pot','The rest is invested. Change either box and the other follows.','£')}
+        <div class="field"><label for="isaOut">Invest this much in a Stocks &amp; Shares ISA</label><div class="inp"><span>£</span><input id="isaOut" type="number" inputmode="decimal" min="0" step="any"></div><div class="hint">Lump sum minus the savings pot amount.</div></div>
+        ${num('swr','Yearly income from the investment, %','Only used if you choose "take a yearly income". Of the amount first invested. 4% is the usual guide for a long retirement.','')}
+        <div class="field" style="grid-column:1/-1"><label>What happens to the lump sum</label>${modeSeg()}<div class="hint">See the Lump sum page for what each choice does over the plan.</div></div>
       </div></section>
       <section class="card"><h2>Assumptions</h2><div class="fields">
         ${num('inflation','Inflation, % a year','0 keeps prices flat. The tax-free allowance is frozen until April 2031, so more inflation means more tax.','')}
@@ -718,8 +776,7 @@ pages.numbers = {
   update(){
     $('#dobB').innerHTML = dobBanner();
     document.querySelectorAll('[data-key]').forEach(el => { if (document.activeElement !== el) el.value = getPath(el.dataset.key); });
-    $('#invY').setAttribute('aria-pressed', S.invest); $('#invN').setAttribute('aria-pressed', !S.invest);
-    $('#isaOut').value = Math.max(0, S.lump - S.emergency);
+    setVal($('#isaOut'), Math.max(0, S.lump - Math.min(S.emergency, S.lump)));
     const sim = simulate(S);
     [0,1].forEach(i => $('#spa'+i).innerHTML = `State Pension age ${ageText(sim.spaAge[i])}, from ${monthName(sim.spaIdx[i])}` + (S.dob[i] < '1954-10-06' ? ` <b class="neg">Born before 6 October 1954: different rules apply and are not modelled.</b>` : ''));
     const e = verdict(sim,'e'), i = verdict(sim,'i');
@@ -757,6 +814,7 @@ function refresh(){
   $('#viewAmt').textContent = money(budgetOf(S.view)) + ' a month';
   $('#brandSub').textContent = `${nm(0)} and ${nm(1)}`;
   document.querySelectorAll('input[data-flag]').forEach(el => { el.checked = !!S[el.dataset.flag]; });
+  document.querySelectorAll('.modeBtn').forEach(b => b.setAttribute('aria-pressed', b.dataset.mode === modeOf(S)));
   pages[current].update();
   document.querySelectorAll('[data-name]').forEach(el => el.textContent = nm(+el.dataset.name));
 }
@@ -771,11 +829,18 @@ function bindCommon(){
     });
   });
   main.querySelectorAll('input[data-flag]').forEach(el => el.addEventListener('change', () => { S[el.dataset.flag] = el.checked; save(); refresh(); }));
+  const bindNum = (id, fn) => { const el = $('#'+id); if (el) el.addEventListener('input', () => { fn(parseFloat(el.value)); save(); refresh(); }); };
+  const lumpNow = () => Math.max(0, S.lump), clamp = v => Math.min(lumpNow(), Math.max(0, isFinite(v) ? v : 0));
+  bindNum('split',   v => S.emergency = lumpNow() - clamp(v));
+  bindNum('amtInv',  v => S.emergency = lumpNow() - clamp(v));
+  bindNum('isaOut',  v => S.emergency = lumpNow() - clamp(v));
+  bindNum('amtCash', v => S.emergency = clamp(v));
+  bindNum('swr',     v => S.swr = isFinite(v) ? Math.max(0, v) : 0);
   const x2 = $('#x2'); if (x2) x2.addEventListener('input', () => { S.extra2 = +x2.value; save(); refresh(); });
   ['gr','cr'].forEach(id => { const el = $('#'+id); if (el) el.addEventListener('input', () => { if (id==='gr') S.growth = +el.value; else S.cashReal = +el.value; save(); refresh(); }); });
   const st = $('#stress'); if (st) st.addEventListener('change', () => refresh());
 }
-document.addEventListener('click', e => { const b = e.target.closest && e.target.closest('#invY,#invN'); if (b){ S.invest = b.id==='invY'; save(); refresh(); } });
+document.addEventListener('click', e => { const b = e.target.closest && e.target.closest('.modeBtn'); if (b){ const m = b.dataset.mode; S.invest = m !== 'cash'; if (m !== 'cash') S.drawdown = (m === 'income'); save(); refresh(); } });
 $('#vE').addEventListener('click', () => { S.view = 'e'; save(); refresh(); });
 $('#vI').addEventListener('click', () => { S.view = 'i'; save(); refresh(); });
 window.addEventListener('hashchange', render);

@@ -1,6 +1,6 @@
 # Retirement Bridge Planner
 
-A plain-English retirement planner for a couple. It shows how long savings last in the "bridge" years before State Pension starts, what an extra pension would change, whether Marriage Allowance helps, and whether to invest a tax-free lump sum or keep it as cash.
+A plain-English retirement planner for a couple. It shows how long savings last in the "bridge" years before State Pension starts, what an extra pension would change, whether Marriage Allowance helps, and what to do with a tax-free lump sum (keep it as cash, split it and let the investment grow, or split it and take a yearly income).
 
 - One static page (`index.html`), no build step, no server.
 - All numbers are typed into the page and stay in your browser (`localStorage`). Nothing is sent anywhere.
@@ -20,7 +20,7 @@ The calculations are checked in layers. Run `npm test` (plain Node, nothing to i
 5. **Lump sum maths** against compound interest and the annuity formula.
 6. **Formatting** of pounds, signs and ages.
 
-The suite was also tested by breaking the engine on purpose (35 deliberate bugs such as a wrong tax rate, a missing month of interest or a wrong traffic-light threshold). All were caught.
+The suite was also tested by breaking the engine on purpose (41 deliberate bugs such as a wrong tax rate, a missing month of interest, a wrong traffic-light threshold or an investment reported a year late). All were caught.
 
 `npm run test:ui` drives the real page in a headless browser. It needs Playwright:
 `PLAYWRIGHT_MODULE=/path/to/node_modules/playwright CHROMIUM=/path/to/chromium npm run test:ui`
@@ -32,7 +32,24 @@ The suite was also tested by breaking the engine on purpose (35 deliberate bugs 
 - Marriage Allowance (optional): used only in months where one partner has income at or below the allowance and the other is a basic-rate taxpayer. £1,260 of allowance moves across, worth up to £252 a year. The giver's own allowance falls, so it is only used when it saves money overall.
 - The plan runs until Person 1 is 70, or until 3 years after the later State Pension starts if that is later. The lump sum page looks on to age 90.
 - The traffic light also turns amber or red if income stays below spending after the plan ends and the savings would run out before age 95 or 85.
+- Lump sum: you choose how much goes into the savings pot and how much is invested. The investment grows each year at the growth rate you choose (above inflation). Optionally it also pays a yearly income, which stops if the pot runs out. The investment is shown separately and is not counted as savings in the traffic light.
 - ISA income stops if the ISA pot would run out. First pension payments can be delayed by a set number of months (pensions are paid in arrears).
 - The plan page has stress tests: payments a month late, 2.5% inflation with the allowance frozen, spending 10% higher, and all three.
 - Known simplifications: tax is worked out month by month at the yearly rate (can slightly overstate tax in the year a State Pension starts); pensions start in the month of the birthday; no salary, one-off costs or care costs are modelled.
 - Figures are in today's money. The allowance is frozen until April 2031, so inflation increases tax.
+
+## Example figures
+
+The page opens with round example numbers so each field is easy to recognise. Replace them on "Your numbers".
+
+| Field | Example | What it means |
+|---|---|---|
+| Person 1 pension | £15,000 a year from age 60 | Workplace pension, before tax. The plan starts on this birthday |
+| Person 2 pension | £0 from age 57 | Private pension. Most open at 55, or 57 from April 2028 |
+| State Pensions | £12,547.60 each | Full new State Pension for 2026/27 |
+| Spending | £1,500 essentials, £2,000 ideal, per month | Essentials are the must-pays |
+| Cash savings | £20,000 | Easy-access savings today |
+| Lump sum | £20,000, of which £2,000 to the savings pot, £18,000 invested | Tax-free lump sum on retirement |
+| Income from the investment | 4% a year | Only used if you choose the yearly-income option |
+| Growth | 3% a year above inflation | Used for the investment charts |
+| Inflation, cash interest, payment delay | 0, 0, 0 months | Raise them to be more careful |
