@@ -338,7 +338,7 @@ function simulate(s, o){
   }
   const spaM = spaIdx.map(x => x - start);
   const marriageTotal = months.reduce((t,r) => t + r.mSave/12, 0);
-  return {start, marriageTotal, endAge:(start + N - dobIdx[0])/12, isaPot:isaModel.pot, isaStart:isaAmt, N, months, rows, dobIdx, spaIdx, spaM, retire, buf0, isaAmt, isaYear,
+  return {start, cash:s.cash, marriageTotal, endAge:(start + N - dobIdx[0])/12, isaPot:isaModel.pot, isaStart:isaAmt, N, months, rows, dobIdx, spaIdx, spaM, retire, buf0, isaAmt, isaYear,
           spaAge: s.dob.map(spaMonths)};
 }
 
@@ -348,10 +348,14 @@ function summarise(sim){
   const minMonths = min;
   let minLater = Infinity;                       // lowest balance from the end of the first year onwards
   sim.months.forEach((r,m) => { if (m >= 11 && r.bal < minLater) minLater = r.bal; });
+  // First month the savings are back at the savings figure entered (the lump sum is not part of that figure),
+  // after first falling below it. dipM = -1: never falls below it. backM = -1: does not get back within the plan.
+  let dipM = -1, backM = -1;
+  sim.months.forEach((r,m) => { if (dipM < 0){ if (r.bal < sim.cash) dipM = m; } else if (backM < 0 && r.bal >= sim.cash) backM = m; });
   min = Math.min(min, sim.buf0);
   const lastSpa = Math.min(sim.N-1, Math.max(0, Math.max(sim.spaM[0], sim.spaM[1])));
   const firstSpa = Math.min(sim.N-1, Math.max(0, Math.min(sim.spaM[0], sim.spaM[1])));
-  return {min, minMonths, minLater, minM, runOut, end:sim.months[sim.N-1].bal, atSpa:sim.months[lastSpa].bal,
+  return {min, minMonths, minLater, minM, runOut, dipM, backM, end:sim.months[sim.N-1].bal, atSpa:sim.months[lastSpa].bal,
           lastSpa, firstSpa, incomeBefore:sim.months[0].income, incomeAfter:sim.months[sim.N-1].income,
           incomeBeforeLastSpa: sim.months[Math.max(0, lastSpa-1)].income};
 }
@@ -715,7 +719,12 @@ pages.plan = {
     $('#kpis').innerHTML = [
       [money(s.incomeBefore), `Money coming in each month before State Pensions start`, ''],
       [money(s.incomeAfter), `Money coming in each month once State Pensions start`, ''],
-      [money(s.min), `Lowest your savings fall to`, s.min<0?'neg':'']
+      [money(s.min), `Lowest your savings fall to`, s.min<0?'neg':''],
+      s.dipM < 0
+        ? ['Never falls below', `Your savings never fall below the ${money(S.cash)} you started with`, '']
+        : s.backM < 0
+          ? ['Not in this plan', `Your savings do not get back up to the ${money(S.cash)} you started with before the plan ends`, 'neg']
+          : [monthName(sim.start + s.backM), `Your savings are back up to the ${money(S.cash)} you started with (${nmx(0)} is ${ageText(sim.start + s.backM - sim.dobIdx[0])})`, '']
     ].map(k => `<div class="card kpi"><div class="v ${k[2]}">${k[0]}</div><div class="l">${k[1]}</div></div>`).join('');
     const gap = bud - s.incomeBefore;
     $('#heroH').textContent = gap > 0

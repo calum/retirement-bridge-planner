@@ -39,6 +39,9 @@ const t = async (n, f) => { try { await f(); pass++; } catch (e) { fail++; conso
     await pg.fill('[data-key="dob.0"]', '1960-04-05'); assert(/claim State Pension from age 66 /.test(await txt('#spa0')));
     await pg.fill('[data-key="dob.1"]', '1970-06-01'); assert(/claim State Pension from age 67 /.test(await txt('#spa1')));
     assert.strictEqual((await txt('#dobB')).trim(), ''); });
+  await t('plan page shows when the savings are back at the starting amount', async () => {
+    await go('plan'); const k = await txt('#kpis'); assert(/you started with/.test(k), k);
+    assert(/(Never falls below|Not in this plan|[A-Z][a-z]{2} \d{4})/.test(k), k); });
   await t('Marriage Allowance toggle changes the plan and shows the saving', async () => {
     await go('whatif'); const before = await txt('#maTxt'); assert(/Saves about/.test(before));
     const lowest = () => txt('#wK .kpi .v'); const a = await lowest();

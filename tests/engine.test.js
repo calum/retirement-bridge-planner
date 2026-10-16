@@ -605,4 +605,27 @@ t('retirement date: dateAtAge keeps day and month, and moves 29 Feb to 28 Feb in
   assert.strictEqual(dateAtAge('1964-02-29', 60), '2024-02-29');
 });
 
+/* ---------- savings back at the starting amount ---------- */
+// Person 1: pension 12,000 (under the allowance, no tax) = 1,000 a month; spending 1,200, so savings fall 200 a month for 84 months
+// (to 10,000 - 16,800 = -6,800). State Pension then adds 12,000: gross 24,000, tax (24,000-12,570)*20% = 2,286, net 21,714 = 1,809.50 a month.
+// Surplus 609.50 a month. Back to 10,000 needs 16,800/609.50 = 27.56, so 28 months: month index 84+27 = 111.
+const back = over => summarise(run(Object.assign({pension:[12000,0], sp:[12000,0], pensionDate:['2026-10-15','2021-10-15'], work:[0,0], spend:1200, cash:10000, lump:0, emergency:0, invest:false}, over)));
+t('savings back at the starting amount: hand calc', () => {
+  const x = back(); assert.strictEqual(x.dipM, 0); assert.strictEqual(x.backM, 111);
+  const s = run({pension:[12000,0], sp:[12000,0], work:[0,0], spend:1200, cash:10000, lump:0, emergency:0, invest:false});
+  assert(s.months[110].bal < 10000 && s.months[111].bal >= 10000);
+});
+t('savings back at the starting amount: never below it', () => {
+  const x = back({pension:[20000,0], cash:5000}); assert.strictEqual(x.dipM, -1); assert.strictEqual(x.backM, -1);
+});
+t('savings back at the starting amount: not back before the plan ends', () => {
+  const x = back({sp:[3000,0]}); assert.strictEqual(x.dipM, 0); assert.strictEqual(x.backM, -1);
+});
+t('savings back at the starting amount: the lump sum added to savings is not part of the target', () => {
+  // 15,000 at the start (10,000 entered + 5,000 lump), target 10,000: falls below it after 26 months of -200 (15,000 - 5,200 = 9,800).
+  const x = back({lump:5000}); assert.strictEqual(x.dipM, 25);
+  // At month 83 savings are 15,000 - 16,800 = -1,800; 11,800/609.50 = 19.36, so 20 months: month index 84+19 = 103.
+  assert.strictEqual(x.backM, 103);
+});
+
 done('engine tests');
