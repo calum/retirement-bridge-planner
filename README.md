@@ -55,7 +55,7 @@ The calculations are checked in layers. Run `npm test` (plain Node, nothing to i
 5. **Lump sum maths** against compound interest and the annuity formula.
 6. **Formatting** of pounds, signs and ages.
 
-The suite was also tested by breaking the engine on purpose (64 deliberate bugs such as a wrong tax rate, a missing month of interest, a wrong National Insurance rate, an emergency fund of the wrong size or an investment reported a year late). All were caught.
+`npm run test:mutation` repeats that deliberate-breaking check yourself. The suite was tested by breaking the engine on purpose (64 deliberate bugs such as a wrong tax rate, a missing month of interest, a wrong National Insurance rate, an emergency fund of the wrong size or an investment reported a year late). All were caught.
 
 `npm run test:ui` drives the real page in a headless browser. It needs Playwright:
 `PLAYWRIGHT_MODULE=/path/to/node_modules/playwright CHROMIUM=/path/to/chromium npm run test:ui`
