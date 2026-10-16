@@ -88,3 +88,7 @@ The page opens with round example numbers so each field is easy to recognise. Re
 | Income from the investment | 4% a year | Only used if you choose the yearly-income option |
 | Growth | 3% a year above inflation | Used for the investment charts |
 | Inflation, cash interest, payment delay | 0, 0, 0 months | Raise them to be more careful |
+
+## Working on this with Claude
+
+`CLAUDE.md` describes the product promises (privacy, plain English), the code layout, the safe-to-retire rules, the test commands and the development workflow, so a new session can start from it.

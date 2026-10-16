@@ -18,7 +18,7 @@ These are product promises. Do not weaken them without the user saying so.
 
 All rules live in the engine (between `/*ENGINE_START*/` and `/*ENGINE_END*/` in `index.html`). Constants are at the top of that block.
 
-- **Timeline:** monthly, from when Person 1's pension starts (`pensionAge[0]`, default 60, or today if that has passed) until Person 1 is 70 or 36 months after the later State Pension starts, whichever is later. Everything is in today's money.
+- **Timeline:** monthly, from Person 1's chosen retirement date (`pensionDate[0]`, any day, not just a birthday; or today if that has passed) until Person 1 is 70 or 36 months after the later State Pension starts, whichever is later. Person 2's own pension starts on `pensionDate[1]`. Everything is in today's money. Dates are `YYYY-MM-DD` strings; the engine works in whole months (`monthIdx`).
 - **Tax:** 20% basic rate only, per person, above the £12,570 personal allowance. Allowance is frozen until April 2031; with `inflation > 0` it shrinks in real terms until then. Higher-rate and Scottish tax are not modelled. Private pension is treated as fully taxable (the 25% tax-free part is ignored, which is cautious).
 - **State Pension age:** from date of birth, England/Wales/NI rules: 66 up to 5 Apr 1960; 66 plus 1 to 11 months up to 5 Mar 1961; 67 up to 5 Apr 1977; then 68. Born before 6 Oct 1954 is not supported (the UI warns).
 - **Earnings:** optional part-time earnings per person, until that person's own State Pension age. Employee National Insurance 8% above £12,570 of earnings (rate and threshold not re-verified online).
@@ -42,15 +42,15 @@ The thresholds above (6 months, 5%, 1 month, 2.5%, 95 and 85) are product decisi
 ## Code map (`index.html`, one file, no build)
 
 - Head: `<title>`, viewport meta, one `<style>` block with theme tokens (light, dark via `prefers-color-scheme`, and `[data-theme]`).
-- **Engine** (`ENGINE_START` to `ENGINE_END`): `defaultState`, `spaMonths`, `simulate`, `summarise`, `assess`, `stressedState`, `readiness`, `neededWork`, `maxSafeSpend`, `lumpModel`. Pure functions, no DOM. Tests load this block directly.
+- **Engine** (`ENGINE_START` to `ENGINE_END`): `defaultState`, `spaMonths`, `dateAtAge`, `simulate`, `summarise`, `assess`, `stressedState`, `readiness`, `neededWork`, `maxSafeSpend`, `lumpModel`. Pure functions, no DOM. Tests load this block directly.
 - **Formatters** (`FORMAT_START` to `FORMAT_END`): `money`, `axisMoney`, `ageText`.
 - UI helpers, hand-written SVG charts (`heroChart`, `potChart`, `lineChart`), `verdict`, `answerHTML`, glossary, `cardify` (turns tables into cards on phones).
 - `pages.plan | pot | whatif | lump | numbers | tour | privacy`, each with `build()` (HTML once), `update()` (refresh live parts, runs on every input), optional `bind()`.
 - Router: hash routes (`#plan` and so on). With no hash and `tourSeen` false it redirects to `#tour`.
-- State object `S`, saved by `save()`, loaded by `load()`, wiped by `wipe()`. `load()` migrates old saves (renamed or removed keys). **Adding or renaming a state key means: default in `defaultState`, a migration in `load()`, and a test.**
+- State object `S`, saved by `save()`, loaded by `load()`, wiped by `wipe()`. `load()` migrates old saves (renamed or removed keys). **Adding or renaming a state key means: default in `defaultState`, a migration in `load()`, and a test.** Existing migrations: two spending figures became `spend`; `pensionAge` (an age) became `pensionDate` (a date, via `dateAtAge`); saves without `drawdown` keep taking an income; saves without `tourSeen` skip the tour.
 - Inputs use `data-key="path.0"` bound generically in `bindCommon`. Names are shown with `nm(i)` or `nmx(i)` (escaped, live-updating). Anything user-typed that goes into HTML or a tooltip must go through `esc()`.
 
-State keys: `names, dob, dobConfirmed, pension, pensionAge, sp, work, spend, cash, lump, emergency, swr, invest, drawdown, inflation, cashReal, growth, marriage, payLag, extra2, tourSeen`.
+State keys: `names, dob, dobConfirmed, pension, pensionDate, sp, work, spend, cash, lump, emergency, swr, invest, drawdown, inflation, cashReal, growth, marriage, payLag, extra2, tourSeen`.
 
 ## Commands
 
