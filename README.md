@@ -22,6 +22,10 @@ This is enforced, not just promised:
 
 The only thing that travels over the internet is the page itself arriving, as with any website. The host (GitHub Pages) can see that the page was loaded, but never the numbers.
 
+## Questions page
+
+A "Questions" link at the top (and in the footer) opens 18 short answers in four groups: everyday surprises (car, boiler, holiday), what to do if more money is needed (part-time work, help that is available, finding a lost pension), bigger what-ifs, and what "safe" means. Answers use the plan's own numbers where the app already has them. It adds no new calculations.
+
 ## Guided tour
 
 The first time the page is opened with nothing saved, it starts a guided tour: one plain question per screen (dates of birth, pensions, State Pensions, spending, savings, lump sum, Marriage Allowance), with examples, "where do I find this?" help and live feedback such as the State Pension age. It ends with the answer. It can be skipped or restarted from the "Guided tour" link at the top of every page.

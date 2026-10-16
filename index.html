@@ -119,7 +119,9 @@ th{color:var(--muted);font-weight:700;font-size:.88rem;white-space:normal;vertic
 .check input{width:24px;height:24px;flex:none;accent-color:var(--accent);margin-top:2px}
 .sw{display:inline-block;width:12px;height:12px;border-radius:3px;margin-right:6px}
 /* tour, privacy, footer */
-.tourlink{font-weight:700;font-size:.95rem}
+.tourlink,.faqlink{font-weight:700;font-size:.95rem}
+.brandlinks{display:flex;gap:16px}
+.faqgroup{margin-bottom:4px}
 .foot{padding-block:0 40px;color:var(--muted);font-size:.95rem}
 #tourH:focus,#tourH:focus-visible{outline:none}
 .progress{height:12px;border-radius:999px;background:var(--surface-2);overflow:hidden}
@@ -194,7 +196,7 @@ details.how summary{font-weight:700;cursor:pointer}
 
 <div class="bar">
   <div class="wrap">
-    <div class="brand"><b>Retirement Bridge Planner</b><span id="brandSub"></span><a class="tourlink" href="#tour">Guided tour</a></div>
+    <div class="brand"><b>Retirement Bridge Planner</b><span id="brandSub"></span><div class="brandlinks"><a class="faqlink" href="#faq">Questions</a><a class="tourlink" href="#tour">Guided tour</a></div></div>
     <nav class="tabs" id="tabs" aria-label="Pages">
       <a href="#plan" data-p="plan">Your plan</a>
       <a href="#pot" data-p="pot">Savings</a>
@@ -205,7 +207,7 @@ details.how summary{font-weight:700;cursor:pointer}
   </div>
 </div>
 <div class="wrap"><main id="main"></main></div>
-<footer class="wrap foot"><p><b>Private.</b> The numbers you type stay on this device and are never sent anywhere. <a href="#privacy">How this works</a></p></footer>
+<footer class="wrap foot"><p><b>Private.</b> The numbers you type stay on this device and are never sent anywhere. <a href="#privacy">How this works</a> · <a href="#faq">Questions people ask</a></p></footer>
 <div id="tip" role="tooltip"></div>
 
 <script>
@@ -675,9 +677,20 @@ function answerHTML(){
           <li>This app keeps an <b>emergency fund</b> of 6 months of your spending (${money(r.reserve)} at ${money(S.spend)} a month). Your savings must never go below it.</li>
           <li>This app adds a <b>safety margin</b>. It checks the plan again with your spending 5% higher, your first pension payments a month late, and prices rising 2.5% a year.</li>
           <li>Your money coming in after the State Pensions start must also cover what you spend. Otherwise the savings would run out later.</li>
-          <li>If the plan passes all of that, it is called <b>safe</b>. The highest spending that passes is the <b>safe maximum</b> shown above. This is a careful guide, not a promise, and it cannot see future surprises such as big repairs or care costs.</li>
+          <li>If the plan passes all of that, it is called <b>safe</b>. The highest spending that passes is the <b>safe maximum</b> shown above. This is a careful guide, not a promise. Everyday surprises are what the emergency fund is for. See <a href="#faq">Questions people ask</a> for more.</li>
           <li>For free, impartial help, contact MoneyHelper or Pension Wise (both government-backed) before you decide.</li></ul></details>
     </section>`;
+}
+/* The "what could go wrong" rows: your plan again, with one thing worse. Used by the plan page and the Questions page. */
+function stressRows(st0){
+  const lag = Math.max(st0.payLag||0, 1), infl = Math.max(st0.inflation, 2.5);
+  return [
+    ['Everything goes to plan', {}],
+    ['Your first pension payments arrive a month late (pensions are paid after the month they cover)', {payLag:lag}],
+    ['Prices go up 2.5% a year (the tax-free allowance stays the same until 2031)', {inflation:infl}],
+    ['You spend 10% more than planned', {spend:st0.spend*1.1}],
+    ['All three at once', {payLag:lag, inflation:infl, spend:st0.spend*1.1}]
+  ].map(([label, o]) => { const state = {...st0, ...o}; return {label, state, verdict:verdict(simulate(state), state)}; });
 }
 const GLOSSARY = [
   ['State Pension', 'Money from the government once you reach State Pension age. It does not start by itself: you must claim it, up to 4 months before. Check your forecast at gov.uk/check-state-pension.'],
@@ -685,7 +698,7 @@ const GLOSSARY = [
   ['Marriage Allowance', 'If one of you pays no tax and the other pays the basic 20% rate, the one who pays no tax can pass £1,260 of their allowance to the other. That saves up to £252 a year. You have to claim it from HMRC.'],
   ['Lump sum', 'A one-off, tax-free payment from a workplace pension when you start taking it.'],
   ['Investment (Stocks & Shares ISA)', 'Money put into shares and funds instead of the bank. Growth and income are tax-free in an ISA. It can go down as well as up.'],
-  ['Emergency fund', 'Money kept aside for surprises, such as a broken boiler or car repair. This app keeps 6 months of your spending untouched.'],
+  ['Emergency fund', 'Money kept aside for surprises, such as a broken boiler or car repair. It is meant to be used. This app keeps 6 months of your spending as a safety line.'],
   ['Safety margin', 'This app tests your plan with spending 5% higher, first pension payments a month late, and prices rising 2.5% a year. If it still works, the plan is called safe.'],
   ['Safe maximum spending', 'The most you could spend each month, with everything else as you entered it, and still pass the safe test.'],
   ['Today\'s money', 'Every amount is shown as what it would buy today. That way there is no need to guess future prices.'],
@@ -705,6 +718,7 @@ pages.plan = {
   build(){ return `
     <div id="dobB"></div>
     <div id="answer"></div>
+    <p class="small">Wondering about a car, a repair or a bit of extra income? See <a href="#faq">Questions people ask</a>.</p>
     <div class="grid3" id="kpis"></div>
     <section class="card"><h2 id="heroH"></h2><div id="hero"></div><p class="small">Tap or hover over a block to see the amount. The shaded part is the years before your State Pensions start. <a href="#pot">See your savings year by year</a>.</p></section>
     <section class="card"><h2>What could go wrong?</h2><p class="lead" id="stressLead"></p><div class="tablewrap" id="stress"></div></section>
@@ -731,14 +745,8 @@ pages.plan = {
       ? `Before your State Pensions start, ${money(gap)} a month less comes in than you spend. Afterwards, ${money(s.incomeAfter-bud)} a month more comes in.`
       : `The money coming in covers your spending from the first month, and it grows when your State Pensions start.`;
     heroChart($('#hero'), sim, maxSpend);
-    const tests = [
-      ['Everything goes to plan', {}],
-      ['Your first pension payments arrive a month late (pensions are paid after the month they cover)', {payLag:Math.max(S.payLag||0, 1)}],
-      ['Prices go up 2.5% a year (the tax-free allowance stays the same until 2031)', {inflation:Math.max(S.inflation, 2.5)}],
-      ['You spend 10% more than planned', {spend:S.spend*1.1}],
-      ['All three at once', {payLag:Math.max(S.payLag||0, 1), inflation:Math.max(S.inflation, 2.5), spend:S.spend*1.1}]];
     $('#stressLead').textContent = `This app tested your plan against things that often go wrong. A red mark means that problem would leave you short.`;
-    $('#stress').innerHTML = `<table><thead><tr><th>If this happens…</th><th>Lowest your savings fall to</th><th>Result</th></tr></thead><tbody>${tests.map(([lab, o]) => { const st = {...S, ...o}, vv = verdict(simulate(st), st); return `<tr><td style="white-space:normal">${lab}</td><td class="${vv.s.min<0?'neg':''}"><b>${money(vv.s.min)}</b></td><td>${pillHTML(vv)}</td></tr>`; }).join('')}</tbody></table>`;
+    $('#stress').innerHTML = `<table><thead><tr><th>If this happens…</th><th>Lowest your savings fall to</th><th>Result</th></tr></thead><tbody>${stressRows(S).map(r => `<tr><td style="white-space:normal">${r.label}</td><td class="${r.verdict.s.min<0?'neg':''}"><b>${money(r.verdict.s.min)}</b></td><td>${pillHTML(r.verdict)}</td></tr>`).join('')}</tbody></table>`;
     const f = [];
     f.push(spaLine(sim) + ' Remember to claim it. It does not start by itself.');
     f.push(`You start with <b>${money(sim.buf0)}</b> in savings. It pays for the difference between what comes in and what you spend.`);
@@ -963,7 +971,7 @@ pages.numbers = {
         <li><b>State Pension age</b> comes from your date of birth, using the current rules for England, Wales and Northern Ireland: 66 if born up to 5 April 1960, rising to 67 for those born from 6 March 1961, and 68 for those born from 6 April 1977.</li>
         <li>The plan runs until ${esc(nm(0))} is ${END_AGE}, or until 3 years after the later State Pension starts, whichever is later. Only the Lump sum page looks further, to age 90. If the money coming in is still below what you spend at the end, the app tells you when your savings would run out.</li>
         <li><b>Safe to retire</b> means the plan still works after: an emergency fund of ${RESERVE_MONTHS} months of your spending is kept untouched; spending is ${Math.round(SPEND_MARGIN*100)}% higher; first pension payments are a month late; and prices rise 2.5% a year. The money coming in after the State Pensions start must also cover what you spend. The <b>safe maximum</b> is the highest monthly spending that still passes this test. The app finds it by trying higher and lower amounts.</li>
-        <li><b>What this app leaves out:</b> one-off costs such as a new car, care costs, moving house, and changes to the rules. Income and tax are worked out month by month at the yearly rate, which can slightly overstate tax in the year a State Pension starts. Pensions start in the month of the birthday. The investment income stops if the investment would run out.</li>
+        <li><b>What this app leaves out:</b> one-off costs such as a new car, care costs, moving house, and changes to the rules (see <a href="#faq">Questions people ask</a>). Income and tax are worked out month by month at the yearly rate, which can slightly overstate tax in the year a State Pension starts. Pensions start in the month of the birthday. The investment income stops if the investment would run out.</li>
         <li>This is a planning guide, not financial advice. Check pension amounts with your pension scheme and State Pension ages on gov.uk. For free, impartial help, contact MoneyHelper or Pension Wise (both government-backed).</li></ul></section>
       <section class="card"><h2>Start again</h2><p>Put every number back to the starting values. This clears anything you have typed.</p><div><button class="btn ghost" id="reset" type="button">Reset to the starting numbers</button></div></section>`; },
   update(){
@@ -1073,7 +1081,7 @@ const TOUR = [
       <li>${nmx(1)} born ${esc(S.dob[1])}, pension ${money(S.pension[1])} a year from ${esc(S.pensionDate[1])}, State Pension ${money(S.sp[1])} a year.</li>
       <li>Spending: ${money(S.spend)} a month.</li>
       <li>Savings ${money(S.cash)}. Lump sum ${money(S.lump)}.${S.marriage ? ' Marriage Allowance is on.' : ''}</li></ul></details>
-    <p class="small">You can change any number later on the Your numbers page, or take the tour again from the top of the page.</p>`}
+    <p class="small">You can change any number later on the Your numbers page, or take the tour again from the top of the page. Questions such as a new car or a repair are answered on the <a href="#faq">Questions people ask</a> page.</p>`}
 ];
 function syncTourLump(){
   const mode = modeOf(S), lump = Math.max(0, S.lump), cashIn = Math.min(Math.max(0, S.emergency), lump), amt = lump - cashIn, income = mode === 'income';
@@ -1162,6 +1170,79 @@ pages.privacy = {
     });
   },
   update(){}
+};
+
+/* ---------- questions people ask ---------- */
+/* Every live number here comes from an existing engine result (simulate, readiness, maxSafeSpend, neededWork, stressRows). Nothing is worked out again. */
+function faqFacts(){
+  const sim = simulate(S), s = verdict(sim).s, r = readiness(S), m = maxSafeSpend(S);
+  const room = r.safe ? Math.max(0, m - S.spend) : 0;
+  const need = [0,1].map(p => ({p, x:neededWork(S, p)})).filter(n => n.x !== null && n.x > 0).sort((a,b) => a.x - b.x);
+  const lastSpa = Math.max(...sim.spaIdx), years = Math.round((lastSpa - sim.start) / 12);
+  return {sim, s, r, m, room, need, years, stress:stressRows(S)};
+}
+const FAQ_GROUPS = ['Everyday surprises, covered', 'If you ever need a little more', 'Bigger what-ifs, in perspective', 'About the answer'];
+const FAQ = [
+  [0, 'What is the emergency fund for?', f => `<p>It is for the unexpected costs that come to everyone: a car repair, a boiler, a roof, the dentist, the vet. It is meant to be used. Dipping into it is exactly what it is there for.</p>
+    <p>It does not need to be huge.${f.years > 0 ? ` The tighter years only last about ${f.years} years, until the last State Pension starts. After that, more money comes in each month.` : ''}${f.r.reserve > 0 ? ` At ${money(S.spend)} a month, this app keeps ${money(f.r.reserve)} aside.` : ''}</p>`],
+  [0, 'Can you afford a new car?', f => `<p>A car is a normal cost, and you can plan for it. A simple way is to put a little aside each month. A £10,000 car every 10 years is about £83 a month.</p>
+    <p>${f.room >= 83 ? `Your plan has room for that. You could spend ${money(f.room)} a month more and still be safe.` : f.room >= 10 ? `Your plan has room to spend ${money(f.room)} a month more and still be safe. A smaller car fund or a cheaper car would fit inside that.` : `To check it, add the amount to your spending on the Your numbers page and read the new answer.`}</p>
+    <p>Either way, a repair or a sudden replacement is what the emergency fund is for.</p>`],
+  [0, 'Can you make a bigger purchase before your State Pensions start?', f => {
+    const {sim, s} = f, lowAge = ageText(sim.start + s.minM - sim.dobIdx[0]);
+    const where = s.dipM < 0 ? `<p>In your plan, your savings never fall below the ${money(S.cash)} you start with. That is a comfortable place to be.</p>`
+      : s.backM < 0 ? `<p>In your plan, your savings are lowest at ${money(s.min)} around age ${lowAge}, and they do not get back to the ${money(S.cash)} you start with before the plan ends.</p>`
+      : `<p>In your plan, your savings are lowest at ${money(s.min)} around age ${lowAge}. They are back up to the ${money(S.cash)} you start with by ${monthName(sim.start + s.backM)}.</p>`;
+    return `<p>These are the years when savings are at their lowest, so a big purchase is easiest before you retire, or after your State Pensions start.</p>${where}<p>If a big cost comes in the middle, add it to your plan on the What if page and read the new answer.</p>`; }],
+  [0, 'Can you afford a holiday every year?', f => `<p>Yes. Holidays are part of your monthly spending. Take the yearly cost and divide it by 12. For example, £2,400 a year is £200 a month.</p>
+    <p>${f.room >= 10 ? `Your plan has room to spend ${money(f.room)} a month more and still be safe.` : `Add it to your spending on the Your numbers page and read the new answer.`}</p>`],
+  [1, 'What if your savings dip below the emergency fund?', f => `<p>That is normal, and it is what the fund is for. You have not done anything wrong. There are several easy steps, and you can take them in this order.</p>
+    <ul class="tidy"><li>Spend a little less for a while.</li>${S.invest && f.sim.isaStart > 0 ? `<li>Use some of your investment (about ${money(f.sim.isaStart)} today). This app keeps it separate and does not count it as savings.</li>` : ''}<li>Bring in some extra income. See the question on part-time work.</li><li>Check the help that is available. See the question on help with money.</li></ul>
+    <p>${f.r.safe ? `Right now your plan is safe, with ${money(f.r.reserve)} kept aside.` : f.m > 0 ? `The most this app finds safe is ${money(f.m)} a month.` : ''}</p>`],
+  [1, 'Is there easy part-time work if you want some extra income?', f => {
+    const n = f.need[0];
+    const live = f.r.safe ? `<p>Your plan is safe, so this is a choice, not a need. The What if page shows what extra income would add.</p>`
+      : n ? `<p>${nmx(n.p)} earning about ${money(n.x)} a year before tax would make your plan safe. After tax, that is about ${money(netGain(n.p, n.x))} a month, or about ${money(n.x / 52)} a week before tax.</p>`
+      : `<p>Extra income on its own would not be enough yet. A little less spending as well would help.</p>`;
+    return `<p>Yes. Many people in their 60s pick up a few hours a week. Shops, garden centres, libraries, schools, charity shops and seasonal work are all common choices. You can often choose days and hours that suit you.</p>${live}<p>Try the sliders on the What if page to see the difference.</p>`; }],
+  [1, 'What help is available with money?', () => `<ul class="tidy"><li><b>Pension Credit</b> tops up weekly income to a set minimum once you reach State Pension age. Having savings or owning your home does not automatically rule you out. The gov.uk Pension Credit calculator is free.</li>
+    <li><b>Your local council</b> can help with council tax and sometimes with rent.</li>
+    <li><b>Attendance Allowance</b> helps if you need help with personal care. It is for people over State Pension age and does not depend on your savings. Scotland has a different scheme.</li>
+    <li><b>MoneyHelper</b> and <b>Citizens Advice</b> give free, friendly guidance.</li></ul>
+    <p>Amounts change each year, so check the current figures on gov.uk.</p>`],
+  [1, 'You have an old pension and have lost the details. How do you find it?', () => `<p>This is very common, and it is usually easy to fix.</p>
+    <ul class="tidy"><li>A free service such as <b>Gretel</b> can search for lost pensions. It does not take commission. It tells you about matches, and then you contact the provider yourself. It does not cover every pension.</li>
+    <li>The government's free <b>Pension Tracing Service</b> (gov.uk/find-pension-contact-details) gives you contact details if you know the employer or provider name.</li>
+    <li>Old payslips, P60s and letters often have the name you need.</li>
+    <li>Most private pensions can be taken from age 55 (57 from April 2028). <b>Pension Wise</b> gives free guidance.</li></ul>
+    <p>Once you find one, add it on the Your numbers page and the answer may get better. This app never sees what you type into those other sites.</p>`],
+  [2, 'What if prices rise faster, or payments arrive late?', f => {
+    const row = f.stress[2];
+    return `<p>Both are already in the safety margin. This app tests your plan with prices up 2.5% a year and with first pension payments a month late.</p><p>With prices up 2.5% a year, the lowest your savings fall to is ${money(row.verdict.s.min)}.${S.payLag > 0 ? ` You have already allowed ${S.payLag} ${S.payLag === 1 ? 'month' : 'months'} for first payments.` : ''}</p>`; }],
+  [2, 'What if the stock market falls?', f => `<p>${S.invest && f.sim.isaStart > 0 ? `Only the invested part, about ${money(f.sim.isaStart)} to start with, can go up and down. Your savings and pensions do not. The Lump sum page has a test for a poor start.` : `You chose to keep the lump sum in savings, so the stock market does not affect your plan.`}</p>`],
+  [2, 'What if your State Pension age is different, or the rules change?', f => `<p>${spaLine(f.sim)}</p><p>This app works it out from your date of birth, using today's rules. Check your own forecast at gov.uk/check-state-pension. If the rules ever change, change the dates on the Your numbers page.</p>`],
+  [2, 'What if one of you needs care?', () => `<p>This app does not include care costs, because they vary so much. The emergency fund is the first thing to turn to. Attendance Allowance may help with personal care. Your local council's adult social care team and MoneyHelper give free advice.</p>`],
+  [2, 'What if one of you dies?', () => `<p>This app does not include this. Many pensions pay something to a surviving partner. Ask each pension provider what they would pay. MoneyHelper and Pension Wise can talk it through for free.</p>`],
+  [2, 'What about an inheritance, or selling the house?', () => `<p>This app does not include them. If one comes along, treat it as a welcome bonus, not part of the plan.</p>`],
+  [3, 'Why does it say "Not yet" when you are only a little short?', f => f.r.safe ? `<p>Your answer is Safe now, so there is no gap to close.</p>`
+    : `<p>"Not yet" means the plan fails a test with slightly worse luck. A small gap is often easy to close.${f.m > 0 && f.m < S.spend ? ` Spending ${money(S.spend - f.m)} a month less would make it safe.` : ''}${f.need[0] ? ` Or ${nmx(f.need[0].p)} could earn about ${money(f.need[0].x)} a year before tax.` : ''}</p>`],
+  [3, 'What does "safe" mean, and is this advice?', f => `<p>Safe means the plan passes four checks, even with spending 5% higher, first payments a month late and prices rising 2.5% a year. Savings never run out. The emergency fund stays in place. And after the State Pensions start, your income covers your spending.</p>
+    <p>${f.m > 0 ? `The most this app finds safe is ${money(f.m)} a month. ` : ''}It is a careful guide, not a promise, and it is not financial advice. MoneyHelper and Pension Wise give free, impartial help.</p>`],
+  [3, 'Can you retire earlier or later?', () => `<p>Yes. Change the retirement date on the Your numbers page and read the new answer. Retiring earlier means your State Pensions are further away. You can also take the guided tour again from the top of the page.</p>`],
+  [3, 'Where are your numbers kept, and does this include tax?', () => `<p>Your numbers stay on this device only. Nothing is sent anywhere. Read more on the privacy page.</p><p>This app includes income tax at the basic 20% rate, and National Insurance on earnings. It does not include higher-rate or Scottish tax.</p>`]
+];
+pages.faq = {
+  build(){ return `
+    <div><h1>Questions people ask</h1><p class="lead" id="faqLead" style="margin-top:6px"></p></div>
+    ${FAQ_GROUPS.map((g, gi) => `<section class="card"><h2 class="faqgroup">${g}</h2>${FAQ.map((q, i) => q[0] === gi ? `<details class="gloss"><summary>${q[1]}</summary><div class="ans" data-i="${i}"></div></details>` : '').join('')}</section>`).join('')}
+    <p class="small">This is a planning guide, not financial advice.</p>`; },
+  update(){
+    const f = faqFacts();
+    $('#faqLead').textContent = f.r.level === 'safe' ? 'Good news: this app says you can afford to retire. These answers are here for peace of mind.'
+      : f.r.level === 'tight' ? 'You are nearly there. These answers show what could close the gap.'
+      : 'Here is what could change that, and the help that is available.';
+    document.querySelectorAll('#main .ans').forEach(el => { el.innerHTML = FAQ[+el.dataset.i][2](f); });
+  }
 };
 
 /* ---------- state paths ---------- */

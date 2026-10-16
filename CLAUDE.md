@@ -45,10 +45,12 @@ The thresholds above (6 months, 5%, 1 month, 2.5%, 95 and 85) are product decisi
 - **Engine** (`ENGINE_START` to `ENGINE_END`): `defaultState`, `spaMonths`, `dateAtAge`, `simulate`, `summarise`, `assess`, `stressedState`, `readiness`, `neededWork`, `maxSafeSpend`, `lumpModel`. Pure functions, no DOM. Tests load this block directly.
 - **Formatters** (`FORMAT_START` to `FORMAT_END`): `money`, `axisMoney`, `ageText`.
 - UI helpers, hand-written SVG charts (`heroChart`, `potChart`, `lineChart`), `verdict`, `answerHTML`, glossary, `cardify` (turns tables into cards on phones).
-- `pages.plan | pot | whatif | lump | numbers | tour | privacy`, each with `build()` (HTML once), `update()` (refresh live parts, runs on every input), optional `bind()`.
+- `pages.plan | pot | whatif | lump | numbers | tour | privacy | faq`, each with `build()` (HTML once), `update()` (refresh live parts, runs on every input), optional `bind()`.
 - Router: hash routes (`#plan` and so on). With no hash and `tourSeen` false it redirects to `#tour`.
 - State object `S`, saved by `save()`, loaded by `load()`, wiped by `wipe()`. `load()` migrates old saves (renamed or removed keys). **Adding or renaming a state key means: default in `defaultState`, a migration in `load()`, and a test.** Existing migrations: two spending figures became `spend`; `pensionAge` (an age) became `pensionDate` (a date, via `dateAtAge`); saves without `drawdown` keep taking an income; saves without `tourSeen` skip the tour.
 - Inputs use `data-key="path.0"` bound generically in `bindCommon`. Names are shown with `nm(i)` or `nmx(i)` (escaped, live-updating). Anything user-typed that goes into HTML or a tooltip must go through `esc()`.
+
+**Questions page (`pages.faq`, `FAQ`, `faqFacts`):** 18 questions in 4 groups, reached by a "Questions" link (header, footer, plan page, last tour step), not a tab. Rules: live numbers come only from existing engine results (`readiness`, `maxSafeSpend`, `neededWork`, `stressRows`), never new maths, and each has a guard and a plain fallback. Tone is calm and optimistic: the emergency fund is for everyday surprises and is meant to be used; "a careful guide, not a promise" appears once (the "safe" question). No questions about gifts, weddings or children. Things the app cannot model (care, a death, inheritance) get short, gentle answers with no figures. Only verified facts, no benefit amounts (they change): say "check gov.uk". Name Gretel but never link to it. Do not use `.tourlink` for new links: its click handler resets the tour step.
 
 State keys: `names, dob, dobConfirmed, pension, pensionDate, sp, work, spend, cash, lump, emergency, swr, invest, drawdown, inflation, cashReal, growth, marriage, payLag, extra2, tourSeen`.
 

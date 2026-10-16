@@ -11,9 +11,10 @@ const t = async (n, f) => { try { await f(); pass++; } catch (e) { fail++; conso
   const nc = b.newContext.bind(b); b.newContext = async o => { const c = await nc(o); c.on('request', r => reqs.push(r.url())); return c; };
   const ctx = await b.newContext({viewport:{width:1000,height:900}}), pg = await ctx.newPage(), errs = [];
   pg.on('pageerror', e => errs.push(String(e))); pg.on('console', m => { if (m.type()==='error') errs.push(m.text()); });
+  const openAll = () => pg.evaluate(() => document.querySelectorAll('details').forEach(d => d.open = true));
   const txt = sel => pg.locator(sel).first().innerText();
   const go = async h => { await pg.goto(url + '#' + h); await pg.evaluate(() => localStorage.clear()); await pg.reload(); await pg.waitForTimeout(150); };
-  for (const h of ['plan','pot','whatif','lump','numbers']) await t('page '+h+' renders with no errors or sideways scroll', async () => {
+  for (const h of ['plan','pot','whatif','lump','numbers','faq']) await t('page '+h+' renders with no errors or sideways scroll', async () => {
     await go(h); assert((await txt('main')).length > 200);
     assert.strictEqual(await pg.evaluate('document.documentElement.scrollWidth - window.innerWidth'), 0); });
   await t('the answer shows the safe maximum monthly spending, and spending exactly that is safe but ten pounds more is not', async () => {
@@ -24,7 +25,7 @@ const t = async (n, f) => { try { await f(); pass++; } catch (e) { fail++; conso
     await pg.goto(url + '#numbers'); await pg.fill(spendBox, String(m + 10)); await pg.click('a[data-p="plan"]'); await pg.waitForTimeout(150);
     assert(!/^Yes/.test(await txt('#answer h1')), 'not safe ten pounds above'); });
   await t('there is no ideal-spending idea anywhere any more', async () => {
-    for (const h of ['plan','pot','whatif','lump','numbers','privacy']){ await go(h); const tx = await pg.evaluate(() => document.querySelector('main').textContent); assert(!/\bideal\b|essential/i.test(tx), 'found on ' + h + ': ' + (tx.match(/.{20}(\bideal\b|essential).{20}/i)||[''])[0]); }
+    for (const h of ['plan','pot','whatif','lump','numbers','privacy','faq']){ await go(h); const tx = await pg.evaluate(() => document.querySelector('main').textContent); assert(!/\bideal\b|essential/i.test(tx), 'found on ' + h + ': ' + (tx.match(/.{20}(\bideal\b|essential).{20}/i)||[''])[0]); }
     await go('tour'); for (let i = 0; i < 20; i++){ const tx = await pg.evaluate(() => document.querySelector('#tourBox').textContent); assert(!/\bideal\b|essential/i.test(tx), 'found in tour step ' + i); if (/All done/.test(await txt('#tourH'))) break; await pg.click('[data-tour="next"]'); }
     assert(await pg.locator('#subbar').count() === 0, 'the Essentials / Ideal switch is gone'); });
   await t('numbers saved by an older version with two spending figures are carried over', async () => {
@@ -119,12 +120,12 @@ const t = async (n, f) => { try { await f(); pass++; } catch (e) { fail++; conso
     assert(/earns an extra/.test(await txt('#need'))); });
   await t('the glossary explains the words, and the page avoids money jargon', async () => {
     await go('plan'); assert(await pg.locator('details.gloss').count() >= 8);
-    for (const h of ['plan','pot','whatif','lump','numbers']){ await pg.goto(url + '#' + h); await pg.reload(); await pg.waitForTimeout(100);
+    for (const h of ['plan','pot','whatif','lump','numbers','faq']){ await pg.goto(url + '#' + h); await pg.reload(); await pg.waitForTimeout(100); await openAll();
       const text = await pg.evaluate(() => document.querySelector('main').innerText);
       assert(!/\b(drawdown|SWR|annualised|decumulation|gap years|bridge years|buffer)\b/i.test(text), 'jargon on '+h+': '+(text.match(/\b(drawdown|SWR|annualised|decumulation|gap years|bridge years|buffer)\b/i)||[])[0]); } });
   await t('plain English: the main pages read easily (Flesch reading ease 60 or more)', async () => {
     const syll = w => { w = w.toLowerCase().replace(/[^a-z]/g,''); if (!w) return 0; const m = w.replace(/e$/,'').match(/[aeiouy]+/g); return Math.max(1, m ? m.length : 1); };
-    for (const h of ['plan','numbers','lump']){ await go(h);
+    for (const h of ['plan','numbers','lump','faq']){ await go(h); await openAll();
       const text = await pg.evaluate(() => [...document.querySelectorAll('main p, main li, main h1, main h2, main .hint, main .lead')].map(e => e.innerText).join(' . '));
       const clean = text.replace(/£[\d,.]+k?/g,'five').replace(/\d+(\.\d+)?%?/g,'five');
       const sentences = Math.max(1, clean.split(/[.!?]+\s/).length), words = clean.split(/\s+/).filter(w => /[a-z]/i.test(w));
@@ -222,12 +223,50 @@ const t = async (n, f) => { try { await f(); pass++; } catch (e) { fail++; conso
     assert(/Nothing you type ever leaves this device/.test(text)); assert(/Nothing is sent over the internet/.test(text)); assert(/Try it yourself/.test(text)); assert(/no account/i.test(text));
     await pg.click('#wipe'); assert.notStrictEqual(await saved(pg), null, 'one tap does not delete'); await pg.click('#wipe'); assert.strictEqual(await saved(pg), null); assert(/Done/.test(await txt('#wipeMsg'))); });
   await t('every page has the privacy line in the footer', async () => {
-    for (const h of ['plan','pot','whatif','lump','numbers','privacy']){ await go(h); assert(/never sent anywhere/.test(await txt('footer')), h); } });
+    for (const h of ['plan','pot','whatif','lump','numbers','privacy','faq']){ await go(h); assert(/never sent anywhere/.test(await txt('footer')), h); } });
   await t('the app never speaks as "we", on any page or tour step', async () => {
     const bad = /\b(we|we've|we'll|our|ours|us|let's)\b/i, found = [];
-    for (const h of ['plan','pot','whatif','lump','numbers','privacy']){ await go(h); const tx = await pg.evaluate(() => document.querySelector('main').textContent + ' ' + document.querySelector('footer').textContent); const m = tx.match(bad); if (m) found.push(h + ': ' + m[0]); }
+    for (const h of ['plan','pot','whatif','lump','numbers','privacy','faq']){ await go(h); const tx = await pg.evaluate(() => document.querySelector('main').textContent + ' ' + document.querySelector('footer').textContent); const m = tx.match(bad); if (m) found.push(h + ': ' + m[0]); }
     await go('tour'); for (let i = 0; i < 20; i++){ const tx = await pg.evaluate(() => document.querySelector('#tourBox').textContent); const m = tx.match(bad); if (m) found.push('tour step ' + i + ': ' + m[0]); if (!(await pg.locator('[data-tour="next"]').count()) || /All done/.test(await txt('#tourH'))) break; await pg.click('[data-tour="next"]'); }
     assert.deepStrictEqual(found, []); });
+  const seedState = async o => { await go('plan'); await pg.evaluate(o => { const s = JSON.parse(localStorage.getItem('retirement-bridge-v1') || '{}'); localStorage.setItem('retirement-bridge-v1', JSON.stringify(Object.assign(s, o, {tourSeen:true}))); }, o); await pg.goto(url + '#faq'); await pg.reload(); await pg.waitForTimeout(150); await openAll(); };
+  const ansOf = async i => pg.locator('#main .ans').nth(i).innerText();
+  await t('the Questions page has 18 questions in 4 groups, and no gifts, weddings or children question', async () => {
+    await go('faq'); assert.strictEqual(await pg.locator('details.gloss').count(), 18); assert.strictEqual(await pg.locator('h2.faqgroup').count(), 4);
+    const tx = await pg.evaluate(() => document.querySelector('main').textContent);
+    assert(!/\b(gift|gifts|wedding|weddings|children)\b/i.test(tx)); assert(!/!/.test(tx), 'no exclamation marks'); assert(!/danger|disaster|panic/i.test(tx)); });
+  await t('the Questions page links work: header, footer, plan page and tour end; and it does not reset the tour step', async () => {
+    await go('plan'); assert(await pg.locator('.faqlink').count() === 1); await pg.click('.faqlink'); assert(/#faq$/.test(pg.url()));
+    await go('plan'); await pg.click('footer a[href="#faq"]'); assert(/#faq$/.test(pg.url()));
+    await go('plan'); await pg.click('#main > p a[href="#faq"]'); assert(/#faq$/.test(pg.url()));
+    await go('tour'); await pg.click('[data-tour="next"]'); await pg.click('.faqlink'); await pg.click('a.tourlink'); assert(/Welcome|How this works|Before you start|app/i.test(await txt('#tourH')));
+    await go('tour'); for (let i = 0; i < 25 && !/All done/.test(await txt('#tourH')); i++) await pg.click('[data-tour="next"]');
+    assert(await pg.locator('#tourBox a[href="#faq"]').count() >= 1, 'link on the last tour step: ' + await txt('#tourH') + ' / ' + pg.url()); });
+  await t('the Questions page fits at 1000px and at 390px with touch', async () => {
+    await go('faq'); await openAll(); assert.strictEqual(await pg.evaluate('document.documentElement.scrollWidth - window.innerWidth'), 0);
+    const pctx = await b.newContext({viewport:{width:390,height:800}, hasTouch:true, isMobile:true}), ph = await pctx.newPage();
+    await ph.goto(url + '#faq'); await ph.evaluate(() => localStorage.clear()); await ph.reload(); await ph.waitForTimeout(200);
+    await ph.evaluate(() => document.querySelectorAll('details').forEach(d => d.open = true));
+    assert.strictEqual(await ph.evaluate('document.documentElement.scrollWidth - window.innerWidth'), 0); assert(await ph.locator('.brandlinks').isVisible()); await pctx.close(); });
+  await t('numbers on the Questions page match the plan page and change with spending', async () => {
+    await seedState({spend:1500}); const fa = await pg.evaluate(() => document.querySelector('main').textContent);
+    await pg.goto(url + '#plan'); await pg.reload(); await pg.waitForTimeout(150);
+    const m = (await txt('.maxbox .v')).replace(/[^0-9]/g, ''), reserve = (await pg.evaluate(() => document.querySelector('.how').textContent)).match(/£([\d,]+) at/)[1];
+    await pg.goto(url + '#faq'); await pg.reload(); await pg.waitForTimeout(150); await openAll();
+    const q16 = await ansOf(15), q1 = await ansOf(0); assert(new RegExp('£' + Number(m).toLocaleString('en-GB') + ' a month').test(q16), 'safe maximum matches: ' + q16);
+    assert(q1.includes('£' + reserve), 'emergency fund matches: ' + q1);
+    await seedState({spend:2400}); assert.notStrictEqual(await ansOf(0), q1); });
+  await t('guards: invest off, safe plan, no dip, and poor plan all read sensibly', async () => {
+    await seedState({invest:false}); assert(/stock market does not affect/.test(await ansOf(9)), 'invest off');
+    await seedState({spend:900, cash:60000}); assert(/Good news/.test(await txt('#faqLead')), 'good-news intro'); assert(/no gap to close/.test(await ansOf(14)), 'no gap when safe');
+    assert(/never fall below/.test(await ansOf(2)) || /lowest at/.test(await ansOf(2)));
+    await seedState({spend:1700}); assert(!/NaN|undefined|Infinity/.test(await pg.evaluate(() => document.querySelector('main').textContent)), 'no broken numbers');
+    await seedState({spend:4000, cash:0, lump:0, emergency:0}); const tx = await pg.evaluate(() => document.querySelector('main').textContent);
+    assert(!/NaN|undefined|Infinity/.test(tx)); assert(/Here is what could change that/.test(await txt('#faqLead')));
+    assert(/not be enough yet|would make your plan safe/.test(await ansOf(5)), 'part-time answer: ' + await ansOf(5)); });
+  await t('an open question stays open after the window is resized', async () => {
+    await go('faq'); await pg.click('details.gloss summary'); assert(await pg.locator('details.gloss').first().evaluate(d => d.open));
+    await pg.setViewportSize({width:700,height:900}); await pg.waitForTimeout(300); assert(await pg.locator('details.gloss').first().evaluate(d => d.open)); await pg.setViewportSize({width:1000,height:900}); });
   await t('it keeps working with the internet switched off', async () => {
     const c = await b.newContext({viewport:{width:1000,height:900}}), p = await c.newPage(); const errs3 = [];
     p.on('pageerror', e => errs3.push(String(e))); await p.goto(url + '#numbers'); await c.setOffline(true);
