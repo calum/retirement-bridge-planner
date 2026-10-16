@@ -1,6 +1,6 @@
 # Retirement Bridge Planner
 
-A plain-English retirement planner for a couple. It gives one clear answer to "can we afford to retire?", and says what extra income would make it safe if the answer is not yet. It shows how long savings last in the "bridge" years before State Pension starts, what an extra pension would change, whether Marriage Allowance helps, and what to do with a tax-free lump sum (keep it as cash, split it and let the investment grow, or split it and take a yearly income).
+A plain-English retirement planner for a couple. It gives one clear answer to "can you afford to retire?", the most you could safely spend each month, and what extra income would make your planned spending safe if the answer is not yet. It shows how long savings last in the "bridge" years before State Pension starts, what an extra pension would change, whether Marriage Allowance helps, and what to do with a tax-free lump sum (keep it as cash, split it and let the investment grow, or split it and take a yearly income).
 
 - One static page (`index.html`), no build step, no server.
 - All numbers are typed into the page and stay in your browser (`localStorage`). Nothing is sent anywhere.
@@ -30,11 +30,13 @@ The first time the page is opened with nothing saved, it starts a guided tour: o
 
 The plan page opens with a straight answer: **yes**, **close but not safe yet**, or **not yet**. A plan counts as safe only if it still works after all of this:
 
-- An emergency fund of 6 months of essential spending is in place by the end of the first year and is never touched.
+- An emergency fund of 6 months of your spending is in place by the end of the first year and is never touched.
 - Spending is 5% higher than planned.
 - First pension payments arrive a month late (pensions are paid in arrears).
 - Prices rise 2.5% a year (the tax-free allowance is frozen until April 2031).
 - Money coming in after the State Pensions start covers spending, so the savings last for life, not just to the end of the plan.
+
+The page also works out the **safe maximum**: the highest monthly spending, with everything else as entered, that still passes all of that. It is found by trying higher and lower amounts, so "you could safely retire spending up to £X a month" is always a figure that has passed the test.
 
 When the answer is not yet, the page works out the smallest extra yearly income, for each person separately, that would make it safe. It can be part-time work or anything else taxed as income. It stops at that person's State Pension age. Tax and National Insurance are taken off. A "Try this in my plan" button adds it so you can see the new answer.
 
@@ -53,7 +55,7 @@ The calculations are checked in layers. Run `npm test` (plain Node, nothing to i
 5. **Lump sum maths** against compound interest and the annuity formula.
 6. **Formatting** of pounds, signs and ages.
 
-The suite was also tested by breaking the engine on purpose (59 deliberate bugs such as a wrong tax rate, a missing month of interest, a wrong National Insurance rate, an emergency fund of the wrong size or an investment reported a year late). All were caught.
+The suite was also tested by breaking the engine on purpose (64 deliberate bugs such as a wrong tax rate, a missing month of interest, a wrong National Insurance rate, an emergency fund of the wrong size or an investment reported a year late). All were caught.
 
 `npm run test:ui` drives the real page in a headless browser. It needs Playwright:
 `PLAYWRIGHT_MODULE=/path/to/node_modules/playwright CHROMIUM=/path/to/chromium npm run test:ui`
@@ -80,7 +82,7 @@ The page opens with round example numbers so each field is easy to recognise. Re
 | Person 1 pension | £15,000 a year from age 60 | Workplace pension, before tax. The plan starts on this birthday |
 | Person 2 pension | £0 from age 57 | Private pension. Most open at 55, or 57 from April 2028 |
 | State Pensions | £12,547.60 each | Full new State Pension for 2026/27 |
-| Spending | £1,500 essentials, £2,000 ideal, per month | Essentials are the must-pays |
+| Spending | £1,500 a month | Everything you expect to spend: bills, food, housing, travel, holidays and treats |
 | Cash savings | £20,000 | Easy-access savings today |
 | Lump sum | £20,000, of which £2,000 to the savings pot, £18,000 invested | Tax-free lump sum on retirement |
 | Income from the investment | 4% a year | Only used if you choose the yearly-income option |

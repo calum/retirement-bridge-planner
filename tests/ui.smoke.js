@@ -16,9 +16,21 @@ const t = async (n, f) => { try { await f(); pass++; } catch (e) { fail++; conso
   for (const h of ['plan','pot','whatif','lump','numbers']) await t('page '+h+' renders with no errors or sideways scroll', async () => {
     await go(h); assert((await txt('main')).length > 200);
     assert.strictEqual(await pg.evaluate('document.documentElement.scrollWidth - window.innerWidth'), 0); });
-  await t('budget switch changes the highlighted card and the chart label', async () => {
-    await go('plan'); await pg.click('#vI'); assert.strictEqual(await pg.getAttribute('#vI','aria-pressed'), 'true');
-    assert(/ideal/i.test(await txt('#heroH'))); });
+  await t('the answer shows the safe maximum monthly spending, and spending exactly that is safe but ten pounds more is not', async () => {
+    await go('plan'); const m = +(await txt('.maxbox .v')).replace(/[^0-9]/g, ''); assert(m > 0, 'a maximum is shown'); assert(/You could safely retire spending up to/.test(await txt('.maxbox')));
+    const spendBox = '[data-key="spend"]';
+    await pg.goto(url + '#numbers'); await pg.fill(spendBox, String(m)); await pg.click('a[data-p="plan"]'); await pg.waitForTimeout(150);
+    assert(/^Yes/.test(await txt('#answer h1')), 'safe at the maximum: ' + await txt('#answer h1'));
+    await pg.goto(url + '#numbers'); await pg.fill(spendBox, String(m + 10)); await pg.click('a[data-p="plan"]'); await pg.waitForTimeout(150);
+    assert(!/^Yes/.test(await txt('#answer h1')), 'not safe ten pounds above'); });
+  await t('there is no ideal-spending idea anywhere any more', async () => {
+    for (const h of ['plan','pot','whatif','lump','numbers','privacy']){ await go(h); const tx = await pg.evaluate(() => document.querySelector('main').textContent); assert(!/\bideal\b|essential/i.test(tx), 'found on ' + h + ': ' + (tx.match(/.{20}(\bideal\b|essential).{20}/i)||[''])[0]); }
+    await go('tour'); for (let i = 0; i < 20; i++){ const tx = await pg.evaluate(() => document.querySelector('#tourBox').textContent); assert(!/\bideal\b|essential/i.test(tx), 'found in tour step ' + i); if (/All done/.test(await txt('#tourH'))) break; await pg.click('[data-tour="next"]'); }
+    assert(await pg.locator('#subbar').count() === 0, 'the Essentials / Ideal switch is gone'); });
+  await t('numbers saved by an older version with two spending figures are carried over', async () => {
+    await go('numbers'); await pg.evaluate(() => localStorage.setItem('retirement-bridge-v1', JSON.stringify({ess:1717, ideal:2323, view:'i'}))); await pg.reload(); await pg.waitForTimeout(150);
+    assert.strictEqual(await pg.inputValue('[data-key="spend"]'), '1717'); await pg.fill('[data-key="cash"]', '1234');
+    const st = await pg.evaluate(() => JSON.parse(localStorage.getItem('retirement-bridge-v1'))); assert.strictEqual(st.spend, 1717); assert(!('ess' in st) && !('ideal' in st) && !('view' in st)); });
   await t('renaming a person changes the labels everywhere', async () => {
     await go('numbers'); await pg.fill('[data-key="names.0"]', 'Alex'); await pg.fill('[data-key="names.1"]', 'Sam');
     assert(/Alex/.test(await txt('.brand'))); await pg.click('a[data-p="plan"]'); assert(/Alex/.test(await txt('main'))); assert(/Sam/.test(await txt('main'))); });
@@ -63,14 +75,14 @@ const t = async (n, f) => { try { await f(); pass++; } catch (e) { fail++; conso
   await t('the savings pot page shows the investment column when investing', async () => {
     await go('pot'); assert(/Investment at the end of the year/.test(await txt('#tbl'))); await pg.click('.modeBtn[data-mode="cash"]').catch(()=>{}); });
   await t('numbers persist in the browser after reload', async () => {
-    await go('numbers'); await pg.fill('[data-key="ess"]', '1234'); await pg.reload(); await pg.waitForTimeout(150);
-    assert.strictEqual(await pg.inputValue('[data-key="ess"]'), '1234'); });
+    await go('numbers'); await pg.fill('[data-key="spend"]', '1234'); await pg.reload(); await pg.waitForTimeout(150);
+    assert.strictEqual(await pg.inputValue('[data-key="spend"]'), '1234'); });
   await t('reset needs a second tap, then restores the defaults', async () => {
-    await go('numbers'); await pg.fill('[data-key="ess"]', '999'); await pg.click('#reset'); assert.strictEqual(await pg.inputValue('[data-key="ess"]'), '999');
-    await pg.click('#reset'); await pg.waitForTimeout(150); assert.notStrictEqual(await pg.inputValue('[data-key="ess"]'), '999'); });
+    await go('numbers'); await pg.fill('[data-key="spend"]', '999'); await pg.click('#reset'); assert.strictEqual(await pg.inputValue('[data-key="spend"]'), '999');
+    await pg.click('#reset'); await pg.waitForTimeout(150); assert.notStrictEqual(await pg.inputValue('[data-key="spend"]'), '999'); });
 
   await t('clearing a date of birth does not break the page', async () => {
-    await go('numbers'); await pg.fill('[data-key="dob.0"]', ''); await pg.fill('[data-key="ess"]', '1500');
+    await go('numbers'); await pg.fill('[data-key="dob.0"]', ''); await pg.fill('[data-key="spend"]', '1500');
     assert(/claim State Pension from age/.test(await txt('#spa0'))); assert(/Where you stand so far/.test(await txt('#live'))); });
   await t('someone already past State Pension age is not told they have unused allowance', async () => {
     await go('numbers'); await pg.fill('[data-key="dob.1"]', '1955-01-01'); await pg.fill('[data-key="pension.1"]', '0'); await pg.fill('[data-key="sp.1"]', '12500');
@@ -90,11 +102,11 @@ const t = async (n, f) => { try { await f(); pass++; } catch (e) { fail++; conso
     assert(/Yes, you can afford to retire\./.test(await txt('#answer h1'))); assert.strictEqual(await pg.locator('#answer [data-try]').count(), 0);
     assert(/Safe/.test(await txt('#answer .lines'))); });
   await t('the answer: not enough money gives "not yet" and offers extra-income options with a try button', async () => {
-    await go('numbers'); await pg.fill('[data-key="cash"]', '0'); await pg.fill('[data-key="lump"]', '0'); await pg.fill('[data-key="ess"]', '2500'); await pg.fill('[data-key="ideal"]', '3000');
+    await go('numbers'); await pg.fill('[data-key="cash"]', '0'); await pg.fill('[data-key="lump"]', '0'); await pg.fill('[data-key="spend"]', '2500');
     await pg.click('a[data-p="plan"]'); await pg.waitForTimeout(150);
-    assert(/Not yet/.test(await txt('#answer h1'))); assert(/could safely retire if/.test(await txt('#answer'))); assert(await pg.locator('#answer [data-try]').count() >= 1); });
+    assert(/Not yet/.test(await txt('#answer h1'))); assert(/could safely spend £[\d,]+ a month if/.test(await txt('#answer'))); assert((await pg.locator('#answer [data-try]').count() >= 1) || /would not be enough/.test(await txt('#answer')), 'options or an honest message'); });
   await t('"try this in my plan" adds the earnings, improves the answer, and can be removed', async () => {
-    await go('numbers'); await pg.fill('[data-key="cash"]', '5000'); await pg.fill('[data-key="ess"]', '1800'); await pg.click('a[data-p="plan"]'); await pg.waitForTimeout(150);
+    await go('numbers'); await pg.fill('[data-key="cash"]', '5000'); await pg.fill('[data-key="spend"]', '1800'); await pg.click('a[data-p="plan"]'); await pg.waitForTimeout(150);
     const before = await txt('#answer h1'); assert(!/^Yes/.test(before), before);
     await pg.locator('#answer [data-try]').first().click(); await pg.waitForTimeout(150);
     assert(/already includes extra earnings/.test(await txt('#answer'))); assert(/^Yes/.test(await txt('#answer h1')), await txt('#answer h1'));
@@ -163,8 +175,7 @@ const t = async (n, f) => { try { await f(); pass++; } catch (e) { fail++; conso
     await p.click('[data-set="sp.0,12547.6"]'); assert.strictEqual(await p.inputValue('[data-key="sp.0"]'), '12547.6'); await step();
     await p.fill('[data-key="sp.1"]', '9000'); await step();
     await p.fill('[data-key="work.0"]', '5000'); await step();
-    await p.fill('[data-key="ess"]', '1600'); await step();
-    await p.fill('[data-key="ideal"]', '2200'); await step();
+    await p.fill('[data-key="spend"]', '1600'); await step();
     await p.fill('[data-key="cash"]', '25000'); await step();
     await p.fill('[data-key="lump"]', '20000'); await step();
     assert(/lump sum/.test(await head())); await p.click('.modeBtn[data-mode="grow"]'); await p.fill('#amtInv', '15000'); assert.strictEqual(await p.inputValue('#amtCash'), '5000'); await step();
@@ -174,17 +185,17 @@ const t = async (n, f) => { try { await f(); pass++; } catch (e) { fail++; conso
     const st = await saved(p);
     assert.deepStrictEqual(st.names, ['Alex','Sam']); assert.deepStrictEqual(st.dob, ['1966-10-15','1961-02-10']); assert.strictEqual(st.pensionAge[0], 65); assert.strictEqual(st.pensionAge[1], 57);
     assert.deepStrictEqual(st.pension, [14000, 3000]); assert.deepStrictEqual(st.sp, [12547.6, 9000]); assert.strictEqual(st.work[0], 5000);
-    assert.strictEqual(st.ess, 1600); assert.strictEqual(st.ideal, 2200); assert.strictEqual(st.cash, 25000); assert.strictEqual(st.lump, 20000);
+    assert.strictEqual(st.spend, 1600); assert.strictEqual(st.cash, 25000); assert.strictEqual(st.lump, 20000);
     assert.strictEqual(st.emergency, 5000); assert.strictEqual(st.invest, true); assert.strictEqual(st.drawdown, false); assert.strictEqual(st.marriage, true); assert.strictEqual(st.tourSeen, true);
     assert(heads.length >= 15, 'enough small steps: ' + heads.length); assert.deepStrictEqual(errs2, []);
     await p.goto(url); await p.waitForTimeout(150); assert(!/#tour/.test(p.url()), 'finished tour is not shown again'); await c.close(); });
   await t('Back keeps what was typed, and the progress count follows', async () => {
     await go('tour'); for (let i = 0; i < 11; i++) await pg.click('[data-tour="next"]');             // to the essentials-spending step
-    assert(/must pay/.test(await txt('#tourH'))); await pg.fill('[data-key="ess"]', '1234'); const n = await txt('#tourCount');
+    assert(/expect to spend/.test(await txt('#tourH'))); await pg.fill('[data-key="spend"]', '1234'); const n = await txt('#tourCount');
     await pg.click('[data-tour="next"]'); assert.notStrictEqual(await txt('#tourCount'), n); await pg.click('[data-tour="back"]');
-    assert.strictEqual(await pg.inputValue('[data-key="ess"]'), '1234'); assert.strictEqual(await txt('#tourCount'), n); });
+    assert.strictEqual(await pg.inputValue('[data-key="spend"]'), '1234'); assert.strictEqual(await txt('#tourCount'), n); });
   await t('the lump-sum choice step is skipped when there is no lump sum', async () => {
-    await go('tour'); for (let i = 0; i < 14; i++) await pg.click('[data-tour="next"]');             // lump sum amount step
+    await go('tour'); for (let i = 0; i < 13; i++) await pg.click('[data-tour="next"]');             // lump sum amount step
     assert(/tax-free lump sum when you retire/.test(await txt('#tourH'))); await pg.fill('[data-key="lump"]', '0');
     const total = await txt('#tourCount'); await pg.click('[data-tour="next"]'); assert(/married/.test(await txt('#tourH')), 'jumped straight to the next question'); assert.notStrictEqual(await txt('#tourCount'), total); });
   await t('skipping the tour goes to the plan and it is not shown again', async () => {
@@ -194,7 +205,7 @@ const t = async (n, f) => { try { await f(); pass++; } catch (e) { fail++; conso
   await t('the guided tour link restarts the tour from the first step', async () => {
     await go('plan'); await pg.click('.tourlink'); await pg.waitForTimeout(100); assert(/Welcome/.test(await txt('#tourH'))); });
   await t('the privacy page says plainly that nothing leaves the device, and the delete button really deletes', async () => {
-    await go('numbers'); await pg.fill('[data-key="ess"]', '1234'); assert.strictEqual((await saved(pg)).ess, 1234);
+    await go('numbers'); await pg.fill('[data-key="spend"]', '1234'); assert.strictEqual((await saved(pg)).spend, 1234);
     await pg.click('a[href="#privacy"]'); await pg.waitForTimeout(100); const text = await pg.evaluate(() => document.querySelector('main').innerText);
     assert(/Nothing you type ever leaves this device/.test(text)); assert(/Nothing is sent over the internet/.test(text)); assert(/Try it yourself/.test(text)); assert(/no account/i.test(text));
     await pg.click('#wipe'); assert.notStrictEqual(await saved(pg), null, 'one tap does not delete'); await pg.click('#wipe'); assert.strictEqual(await saved(pg), null); assert(/Done/.test(await txt('#wipeMsg'))); });
@@ -208,8 +219,8 @@ const t = async (n, f) => { try { await f(); pass++; } catch (e) { fail++; conso
   await t('it keeps working with the internet switched off', async () => {
     const c = await b.newContext({viewport:{width:1000,height:900}}), p = await c.newPage(); const errs3 = [];
     p.on('pageerror', e => errs3.push(String(e))); await p.goto(url + '#numbers'); await c.setOffline(true);
-    await p.fill('[data-key="ess"]', '1777'); await p.click('a[data-p="plan"]'); await p.waitForTimeout(150);
-    assert(await p.locator('#answer').count() === 1); assert.strictEqual((await saved(p)).ess, 1777); assert.deepStrictEqual(errs3, []); await c.close(); });
+    await p.fill('[data-key="spend"]', '1777'); await p.click('a[data-p="plan"]'); await p.waitForTimeout(150);
+    assert(await p.locator('#answer').count() === 1); assert.strictEqual((await saved(p)).spend, 1777); assert.deepStrictEqual(errs3, []); await c.close(); });
   await t('no console errors during the whole run', async () => assert.deepStrictEqual(errs, []));
   await t('the browser made no outside connections during the entire test run', async () => { const outside = reqs.filter(u => !/^(file:|data:|about:|blob:)/.test(u)); assert.deepStrictEqual(outside, []); });
   console.log(`ui smoke: ${pass} passed, ${fail} failed`); await b.close(); process.exit(fail ? 1 : 0);

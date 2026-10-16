@@ -7,7 +7,7 @@
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
 <style>
 /* Layout concept: one calm column of large-type cards; a sticky bar holds the page tabs and the
-   "Essentials / Ideal" switch. Every chart carries a one-sentence headline. Built for a couple in their 60s. */
+   a single spending figure. Every chart carries a one-sentence headline. Built for a couple in their 60s. */
 :root{
   --bg:#f1f5f7; --surface:#ffffff; --surface-2:#e8eff3; --ink:#11222d; --muted:#44586a; --line:#d3dde4;
   --accent:#0d6677; --accent-ink:#ffffff; --accent-soft:#d9eef2; --focus:#0b57d0;
@@ -140,6 +140,10 @@ ol.steps{margin:0;padding-left:1.3em;display:flex;flex-direction:column;gap:12px
 .safebox{border-left:10px solid var(--good);border-radius:12px;background:var(--good-soft);padding:18px 20px;display:flex;flex-direction:column;gap:10px}
 .safebox h2{font-size:1.5rem}
 /* the one big answer */
+.maxbox{background:var(--bg);border-radius:12px;padding:16px 18px;display:flex;flex-direction:column;gap:2px}
+.maxbox .v{font:700 clamp(2rem,7vw,2.8rem)/1.1 var(--font-display);font-variant-numeric:tabular-nums}
+.maxbox .v span{font:700 1.1rem var(--font-body);color:var(--muted)}
+.maxbox .l{color:var(--muted)}
 .answer{border-width:2px;border-left-width:10px;gap:12px}
 .answer.good{border-color:var(--good)} .answer.warn{border-color:var(--warn)} .answer.bad{border-color:var(--bad)}
 .answer h1{font-size:clamp(1.55rem,5vw,2.2rem)}
@@ -200,16 +204,6 @@ details.how summary{font-weight:700;cursor:pointer}
     </nav>
   </div>
 </div>
-<div class="subbar" id="subbar">
-  <div class="wrap">
-    <label id="viewLabel">Showing</label>
-    <div class="seg" role="group" aria-labelledby="viewLabel">
-      <button type="button" id="vE" aria-pressed="true">Essentials only</button>
-      <button type="button" id="vI" aria-pressed="false">Ideal lifestyle</button>
-    </div>
-    <span class="small" id="viewAmt"></span>
-  </div>
-</div>
 <div class="wrap"><main id="main"></main></div>
 <footer class="wrap foot"><p><b>Private.</b> The numbers you type stay on this device and are never sent anywhere. <a href="#privacy">How this works</a></p></footer>
 <div id="tip" role="tooltip"></div>
@@ -225,7 +219,7 @@ const PA_FREEZE_END = 2031*12 + 3; // allowance frozen until April 2031 (month i
 const NI_RATE = 0.08;         // employee National Insurance on earnings above the threshold (stops at State Pension age)
 const NI_THRESHOLD = 12570;
 // "Safe to retire" test: an emergency fund that is never touched, plus a safety margin on three things that often go wrong.
-const RESERVE_MONTHS = 6;     // emergency fund, in months of essential spending
+const RESERVE_MONTHS = 6;     // emergency fund, in months of spending
 const SPEND_MARGIN = 0.05;    // spending 5% higher than planned
 const STRESS_LAG = 1;         // first pension payments a month late
 const STRESS_INFLATION = 2.5; // prices up 2.5% a year (the tax-free allowance is frozen to 2031)
@@ -250,10 +244,10 @@ function defaultState(){
     names:['Person 1','Person 2'],
     dob:[minusYears(todayStr(),60), minusYears(todayStr(),60)], dobConfirmed:false,
     pension:[15000,0], pensionAge:[60,57], sp:[12547.60,12547.60],
-    ess:1500, ideal:2000,
+    spend:1500,
     cash:20000, lump:20000, emergency:2000, swr:4, invest:true, drawdown:true,
     inflation:0, cashReal:0, growth:3, marriage:false, payLag:0,
-    extra2:0, work:[0,0], view:'e', tourSeen:false
+    extra2:0, work:[0,0], tourSeen:false
   };
 }
 
@@ -278,7 +272,7 @@ function simulate(s, o){
   const Y = Math.ceil(N/12);
   const isaModel = s.invest ? lumpModel(isaAmt, isaYear, s.growth/100, Y, null) : {pot:new Array(Y+1).fill(0), taken:new Array(Y+1).fill(0)};
   const frozenYears = Math.max(0, (PA_FREEZE_END - nowIdx)/12);
-  const buf = {e:buf0, i:buf0};
+  let bal = buf0;
   const months = [];
   for (let m=0; m<N; m++){
     const idx = start + m;
@@ -318,12 +312,9 @@ function simulate(s, o){
     const yr = Math.floor(m/12), isa = isaModel.taken[yr+1] - isaModel.taken[yr];
     const income = (p[0]+p[1]+q[0]+q[1]+w[0]+w[1]-ni[0]-ni[1]+isa)/12;
     const rec = {idx, p, q, w, ni, tax, isa, income, PA, mSave};
-    for (const sc of ['e','i']){
-      const bud = sc==='e' ? s.ess : s.ideal;
-      if (buf[sc] > 0) buf[sc] *= (1 + rc);
-      buf[sc] += income - bud;
-      rec[sc] = buf[sc];
-    }
+    if (bal > 0) bal *= (1 + rc);
+    bal += income - s.spend;
+    rec.bal = bal;
     months.push(rec);
   }
   // yearly rows
@@ -336,13 +327,12 @@ function simulate(s, o){
       src.p0 += r.p[0]/12/n; src.q0 += r.q[0]/12/n; src.p1 += r.p[1]/12/n; src.q1 += r.q[1]/12/n; src.isa += r.isa/12/n; src.w += (r.w[0]+r.w[1]-r.ni[0]-r.ni[1])/12/n;
       tax += (r.tax[0]+r.tax[1])/12; ni += (r.ni[0]+r.ni[1])/12; income += r.income; mSave += r.mSave/12;
     }
-    const prev = a===0 ? {e:buf0, i:buf0} : months[a-1];
+    const startBal = a===0 ? buf0 : months[a-1].bal;
     const ageM = (st) => (start + st - dobIdx[0]);
     rows.push({a, n, src, tax, ni, mSave, income, avg:income/n, isaStart:isaModel.pot[a/12], isaEnd:isaModel.pot[a/12+1],
       age0:Math.floor(ageM(a)/12), age1:ageM(b)/12,
       page0:Math.floor((start + a - dobIdx[1])/12),
-      startBuf:{e:prev.e, i:prev.i}, endBuf:{e:months[b-1].e, i:months[b-1].i},
-      budget:{e:s.ess*n, i:s.ideal*n}});
+      startBal, endBal:months[b-1].bal, budget:s.spend*n});
   }
   const spaM = spaIdx.map(x => x - start);
   const marriageTotal = months.reduce((t,r) => t + r.mSave/12, 0);
@@ -350,36 +340,24 @@ function simulate(s, o){
           spaAge: s.dob.map(spaMonths)};
 }
 
-function summarise(sim, sc){
-  const key = sc;
+function summarise(sim){
   let min = Infinity, minM = 0, runOut = -1;
-  sim.months.forEach((r,m) => { if (r[key] < min){ min = r[key]; minM = m; } if (runOut<0 && r[key] < 0) runOut = m; });
+  sim.months.forEach((r,m) => { if (r.bal < min){ min = r.bal; minM = m; } if (runOut<0 && r.bal < 0) runOut = m; });
   const minMonths = min;
   let minLater = Infinity;                       // lowest balance from the end of the first year onwards
-  sim.months.forEach((r,m) => { if (m >= 11 && r[key] < minLater) minLater = r[key]; });
+  sim.months.forEach((r,m) => { if (m >= 11 && r.bal < minLater) minLater = r.bal; });
   min = Math.min(min, sim.buf0);
   const lastSpa = Math.min(sim.N-1, Math.max(0, Math.max(sim.spaM[0], sim.spaM[1])));
   const firstSpa = Math.min(sim.N-1, Math.max(0, Math.min(sim.spaM[0], sim.spaM[1])));
-  return {min, minMonths, minLater, minM, runOut, end:sim.months[sim.N-1][key], atSpa:sim.months[lastSpa][key],
+  return {min, minMonths, minLater, minM, runOut, end:sim.months[sim.N-1].bal, atSpa:sim.months[lastSpa].bal,
           lastSpa, firstSpa, incomeBefore:sim.months[0].income, incomeAfter:sim.months[sim.N-1].income,
           incomeBeforeLastSpa: sim.months[Math.max(0, lastSpa-1)].income};
 }
 
-// Smallest extra yearly pension for Person 2 that keeps the savings from ever going below `floor` (default zero).
-function neededExtra(s, sc, floor){
-  floor = floor || 0;
-  const f = x => summarise(simulate(s, {extra2:x}), sc).min;
-  if (f(0) >= floor) return 0;
-  let lo = 0, hi = 40000;
-  if (f(hi) < floor) return null;
-  for (let k=0; k<40; k++){ const mid = (lo+hi)/2; if (f(mid) >= floor) hi = mid; else lo = mid; }
-  return Math.ceil(hi/10)*10;
-}
-
 // Traffic light for one budget. 'bad' = savings run out (inside the plan, or soon after it ends because
 // income stays below spending). 'warn' = never below zero but under 3 months of spending, or runs out late.
-function assess(sim, sc, budget){
-  const s = summarise(sim, sc);
+function assess(sim, budget){
+  const s = summarise(sim);
   const endFlow = sim.months[sim.N-1].income - budget;
   let cls = 'good', code = 'covered', lastsToM = null;
   if (s.runOut >= 0){ cls = 'bad'; code = 'runs-out'; }
@@ -395,29 +373,40 @@ function assess(sim, sc, budget){
 
 // The plan with a safety margin: spending 5% higher, first payments a month late, prices rising 2.5% a year.
 function stressedState(s){
-  return Object.assign({}, s, {payLag:Math.max(s.payLag||0, STRESS_LAG), inflation:Math.max(s.inflation, STRESS_INFLATION),
-    ess:s.ess*(1+SPEND_MARGIN), ideal:s.ideal*(1+SPEND_MARGIN)});
+  return Object.assign({}, s, {payLag:Math.max(s.payLag||0, STRESS_LAG), inflation:Math.max(s.inflation, STRESS_INFLATION), spend:s.spend*(1+SPEND_MARGIN)});
 }
-// Safe = under the safety margin the savings never run out, the emergency fund is in place by the end of the first
-// year and never touched after that, and income after the State Pensions covers spending. Tight = works as entered but fails the safety margin. No = runs out as entered.
-function readiness(s, sc, o){
-  const st = stressedState(s), reserve = RESERVE_MONTHS * s.ess;
-  const stressed = assess(simulate(st, o), sc, sc==='e' ? st.ess : st.ideal);
-  const base = assess(simulate(s, o), sc, sc==='e' ? s.ess : s.ideal);
+// Safe = under the safety margin the savings never run out, the emergency fund (6 months of spending) is in place by
+// the end of the first year and never touched after that, and income after the State Pensions covers spending.
+// Tight = works as entered but fails the safety margin. No = runs out as entered.
+function readiness(s, o){
+  const st = stressedState(s), reserve = RESERVE_MONTHS * s.spend;
+  const stressed = assess(simulate(st, o), st.spend);
+  const base = assess(simulate(s, o), s.spend);
   const safe = stressed.runOut < 0 && stressed.code !== 'long-run' && stressed.minLater >= reserve;
   const level = safe ? 'safe' : (base.runOut < 0 && base.cls !== 'bad' ? 'tight' : 'no');
   return {level, safe, base, stressed, reserve, gap:Math.max(0, reserve - stressed.minLater)};
 }
 // Extra yearly earnings (before tax and National Insurance) one person would need, until their own
-// State Pension age, to make the plan safe. 0 = already safe. null = more than 60,000 would not be enough.
-function neededWork(s, person, sc, o){
+// State Pension age, to make the planned spending safe. 0 = already safe. null = more than 60,000 would not be enough.
+function neededWork(s, person, o){
   const base = (s.work || [0,0]).slice();
-  const ok = x => { const w = base.slice(); w[person] = base[person] + x; return readiness(Object.assign({}, s, {work:w}), sc, o).safe; };
+  const ok = x => { const w = base.slice(); w[person] = base[person] + x; return readiness(Object.assign({}, s, {work:w}), o).safe; };
   if (ok(0)) return 0;
   let lo = 0, hi = 60000;
   if (!ok(hi)) return null;
   for (let k=0; k<40; k++){ const mid = (lo+hi)/2; if (ok(mid)) hi = mid; else lo = mid; }
   return Math.ceil(hi/10)*10;
+}
+// The highest monthly spending (to the nearest 10 pounds down) that passes the safe test, with everything else as entered.
+// Spending more only ever makes the plan less safe, so a search finds it. 20,000 is the ceiling.
+const MAX_SPEND = 20000;
+function maxSafeSpend(s, o){
+  const safe = x => readiness(Object.assign({}, s, {spend:x}), o).safe;
+  if (safe(MAX_SPEND)) return MAX_SPEND;
+  if (!safe(0)) return 0;
+  let lo = 0, hi = MAX_SPEND;
+  for (let k=0; k<40; k++){ const mid = (lo+hi)/2; if (safe(mid)) lo = mid; else hi = mid; }
+  return Math.floor(lo/10)*10;
 }
 
 // Lump sum: the same yearly withdrawal from the same pot, cash versus invested (today's money).
@@ -449,6 +438,7 @@ function wipe(){ try{ localStorage.removeItem(KEY); }catch(e){} }
 function load(){
   const d = defaultState(); let saved = null;
   try{ saved = JSON.parse(localStorage.getItem(KEY)||'null'); }catch(e){}
+  if (saved){ if (saved.spend === undefined && saved.ess !== undefined) saved.spend = saved.ess; delete saved.ess; delete saved.ideal; delete saved.view; }   // older saves had two spending figures
   if (saved && saved.tourSeen === undefined) saved.tourSeen = true;   // anyone with saved numbers has already started
   if (saved && saved.invest !== undefined && saved.drawdown === undefined) saved.drawdown = true;   // older saves always took an income
   Object.assign(S, d, saved||{});
@@ -456,13 +446,11 @@ function load(){
 }
 const nm = i => S.names[i] || ('Person '+(i+1));
 const nmx = i => `<span data-name="${i}">${esc(nm(i))}</span>`;
-const budgetOf = (sc, st) => (st||S)[sc==='e' ? 'ess' : 'ideal'];
 const endLbl = sim => Math.round(sim.endAge);
 const modeOf = st => st.invest ? (st.drawdown ? 'income' : 'grow') : 'cash';
 const MODES = [['cash','Keep it all in savings'],['grow','Split it: let the investment grow'],['income','Split it: take a yearly income from it']];
 const modeSeg = () => `<div class="seg modes" role="group" aria-label="What happens to the lump sum">${MODES.map(m => `<button type="button" class="modeBtn" data-mode="${m[0]}" aria-pressed="false">${m[1]}</button>`).join('')}</div>`;
 const setVal = (el, v) => { if (el && document.activeElement !== el) el.value = v; };
-const scName = sc => sc==='e' ? 'essentials' : 'your ideal lifestyle';
 
 /* ---------- tooltip ---------- */
 const tip = $('#tip');
@@ -487,13 +475,12 @@ function niceScale(min, max, n){
 }
 const cw = el => Math.max(300, Math.min(900, el.clientWidth || 600));
 
-/* Income stacked by source, with the two budgets drawn over it. */
-function heroChart(el, sim, sc){
+/* Income stacked by source, with what you plan to spend and the safe maximum drawn over it. */
+function heroChart(el, sim, maxSpend){
   const W = cw(el), narrow = W < 520, H = narrow ? 340 : 400;
   const m = {l: narrow?52:60, r:12, t:30, b: narrow?44:58};
   const iw = W-m.l-m.r, ih = H-m.t-m.b, N = sim.N;
-  const tot = r => r.avg*12/12; // monthly average
-  const maxV = Math.max(...sim.rows.map(r => r.avg), S.ess, S.ideal) * 1.1;
+  const maxV = Math.max(...sim.rows.map(r => r.avg), S.spend, maxSpend || 0) * 1.1;
   const sc_ = niceScale(0, maxV, 5);
   const y = v => m.t + ih - (v - sc_.lo)/(sc_.hi - sc_.lo)*ih;
   const x = mo => m.l + mo/N*iw;
@@ -503,7 +490,6 @@ function heroChart(el, sim, sc){
     ['w', 'Earnings from work', 'var(--c2)'], ['isa', 'Income from your investment', 'var(--c5)']];
   let g = '';
   sc_.ticks.forEach(v => { g += `<line x1="${m.l}" x2="${W-m.r}" y1="${y(v)}" y2="${y(v)}" stroke="var(--line)" stroke-width="1"/><text class="ax" x="${m.l-8}" y="${y(v)+4}" text-anchor="end">${money(v)}</text>`; });
-  const sp = summarise(sim, sc);
   const firstSpa = sim.spaM.reduce((a,b)=>Math.min(a,b));
   if (firstSpa > 0 && firstSpa < N){
     g += `<rect x="${x(0)}" y="${m.t}" width="${x(firstSpa)-x(0)}" height="${ih}" fill="var(--warn-soft)" opacity=".75"/>`;
@@ -523,11 +509,14 @@ function heroChart(el, sim, sc){
   g += `<text class="ax" x="${m.l-8}" y="${H-m.b+18}" text-anchor="end">${esc(nm(0)).slice(0,10)}</text>`;
   if (!narrow) g += `<text class="ax" x="${m.l-8}" y="${H-m.b+36}" text-anchor="end" opacity=".8">${esc(nm(1)).slice(0,10)}</text>`;
   g += `<text class="ax" x="${m.l}" y="${H-6}">Age in each year · amounts are per month, after tax</text>`;
-  // budgets
-  [['e',S.ess,'Essentials'],['i',S.ideal,'Ideal']].forEach(([k,v,l]) => {
-    const act = k === sc;
-    g += `<line x1="${m.l}" x2="${W-m.r}" y1="${y(v)}" y2="${y(v)}" stroke="var(--ink)" stroke-width="${act?3:2}" stroke-dasharray="${act?'':'6 5'}" opacity="${act?1:.55}"/>`;
-    g += `<text class="${act?'axb':'ax'}" x="${W-m.r-4}" y="${y(v)-6}" text-anchor="end" style="paint-order:stroke;stroke:var(--surface);stroke-width:5px;stroke-linejoin:round">${l} ${money(v)}</text>`;
+  // what you plan to spend (solid) and the safe maximum (dashed green)
+  const lines = [[S.spend, 'Your spending', 'var(--ink)', '', 3]];
+  if (maxSpend > 0 && Math.abs(maxSpend - S.spend) >= 10) lines.push([maxSpend, 'Safe maximum', 'var(--good)', '7 5', 3]);
+  const closeLines = lines.length === 2 && Math.abs(y(lines[0][0]) - y(lines[1][0])) < 20, lowerIdx = closeLines && y(lines[0][0]) < y(lines[1][0]) ? 1 : 0;
+  lines.forEach(([v, l, col, dash, wd], k) => {
+    g += `<line x1="${m.l}" x2="${W-m.r}" y1="${y(v)}" y2="${y(v)}" stroke="${col}" stroke-width="${wd}" stroke-dasharray="${dash}"/>`;
+    const below = closeLines && k === lowerIdx;
+    g += `<text class="axb" x="${W-m.r-4}" y="${below ? y(v)+17 : y(v)-6}" text-anchor="end" style="paint-order:stroke;stroke:var(--surface);stroke-width:5px;stroke-linejoin:round">${l} ${money(v)}</text>`;
   });
   // State Pension markers
   [0,1].forEach(i => {
@@ -542,32 +531,28 @@ function heroChart(el, sim, sc){
     g += `<text class="axb" x="${x(mo0)+6}" y="${m.t+16}">${same?'State Pensions start':esc(nm(0))+"'s State Pension starts"}</text>`;
   }
   el.innerHTML = `<svg class="chart" viewBox="0 0 ${W} ${H}" role="img" aria-label="Monthly money coming in for each year, by where it comes from, compared with what you spend">${g}</svg>`
-    + `<div class="legend" style="margin-top:10px">${defs.filter(d => sim.rows.some(r => r.src[d[0]]>0.5)).map(d => `<span><i style="background:${d[2]}"></i>${esc(d[1])}</span>`).join('')}<span><i class="ln" style="border-color:var(--ink)"></i>What you spend: ${sc==='e'?'essentials':'ideal lifestyle'} (solid line)</span></div>`;
+    + `<div class="legend" style="margin-top:10px">${defs.filter(d => sim.rows.some(r => r.src[d[0]]>0.5)).map(d => `<span><i style="background:${d[2]}"></i>${esc(d[1])}</span>`).join('')}<span><i class="ln" style="border-color:var(--ink)"></i>What you plan to spend (solid line)</span>${lines.length > 1 ? '<span><i class="ln dash" style="border-color:var(--good)"></i>Safe maximum (dashed line)</span>' : ''}</div>`;
 }
 
-/* Year-end savings balance for both budgets. */
+/* Year-end savings balance, with the emergency fund drawn across it. */
 function potChart(el, sim){
   const W = cw(el), narrow = W < 520, H = 380, m = {l: narrow?56:64, r:12, t:20, b:56};
-  const iw = W-m.l-m.r, ih = H-m.t-m.b, N = sim.N;
-  const vals = sim.rows.flatMap(r => [r.endBuf.e, r.endBuf.i]).concat([sim.buf0, 0]);
+  const iw = W-m.l-m.r, ih = H-m.t-m.b, N = sim.N, reserve = RESERVE_MONTHS * S.spend;
+  const vals = sim.rows.map(r => r.endBal).concat([sim.buf0, 0, reserve]);
   const sc_ = niceScale(Math.min(...vals), Math.max(...vals), 6);
   const y = v => m.t + ih - (v - sc_.lo)/(sc_.hi - sc_.lo)*ih;
   const x = mo => m.l + mo/N*iw;
-  let g = `<defs>` + [['E','var(--c1)'],['I','var(--c2)']].map(([k,c]) =>
-    `<pattern id="hatch${k}" width="7" height="7" patternUnits="userSpaceOnUse" patternTransform="rotate(45)"><rect width="7" height="7" fill="var(--surface)"/><rect width="3" height="7" fill="${c}"/></pattern>`).join('') + `</defs>`;
+  let g = `<defs><pattern id="hatchP" width="7" height="7" patternUnits="userSpaceOnUse" patternTransform="rotate(45)"><rect width="7" height="7" fill="var(--surface)"/><rect width="3" height="7" fill="var(--c1)"/></pattern></defs>`;
   sc_.ticks.forEach(v => { g += `<line x1="${m.l}" x2="${W-m.r}" y1="${y(v)}" y2="${y(v)}" stroke="${v===0?'var(--ink)':'var(--line)'}" stroke-width="${v===0?1.5:1}"/><text class="ax" x="${m.l-8}" y="${y(v)+4}" text-anchor="end">${axisMoney(v)}</text>`; });
   sim.rows.forEach(r => {
-    const x0 = x(r.a), bw = x(r.a+r.n)-x0, w = Math.min(bw*0.36, 34), gap = 3;
-    [['E','e','var(--c1)','Essentials'],['I','i','var(--c2)','Ideal']].forEach(([K,k,c,lab],j) => {
-      const v = r.endBuf[k], bx = x0 + bw/2 + (j===0 ? -w-gap/2 : gap/2);
-      const y0 = y(0), y1 = y(v);
-      g += `<rect x="${bx}" y="${Math.min(y0,y1)}" width="${w}" height="${Math.max(1,Math.abs(y0-y1))}" fill="${v<0?`url(#hatch${K})`:c}" stroke="${c}" stroke-width="${v<0?2:0}" rx="3" data-tip="${lab}: ${money(v)} saved by the end of the year when ${esc(nm(0))} is ${Math.floor(r.age1)}"/>`;
-    });
+    const x0 = x(r.a), bw = x(r.a+r.n)-x0, w = Math.min(bw*0.62, 56), bx = x0 + (bw-w)/2, v = r.endBal, y0 = y(0), y1 = y(v);
+    g += `<rect x="${bx}" y="${Math.min(y0,y1)}" width="${w}" height="${Math.max(1,Math.abs(y0-y1))}" fill="${v<0?'url(#hatchP)':'var(--c1)'}" stroke="var(--c1)" stroke-width="${v<0?2:0}" rx="3" data-tip="Savings: ${money(v)} at the end of the year when ${esc(nm(0))} is ${Math.floor(r.age1)}"/>`;
     g += `<text class="ax" x="${x0+bw/2}" y="${H-m.b+18}" text-anchor="middle">${Math.floor(r.age1)}</text>`;
   });
+  g += `<line x1="${m.l}" x2="${W-m.r}" y1="${y(reserve)}" y2="${y(reserve)}" stroke="var(--good)" stroke-width="3" stroke-dasharray="7 5"/><text class="axb" x="${W-m.r-4}" y="${y(reserve)-6}" text-anchor="end" style="paint-order:stroke;stroke:var(--surface);stroke-width:5px;stroke-linejoin:round;fill:var(--good)">Emergency fund ${money(reserve)}</text>`;
   g += `<text class="ax" x="${m.l}" y="${H-8}">${esc(nm(0))}'s age at the end of each year</text>`;
-  el.innerHTML = `<svg class="chart" viewBox="0 0 ${W} ${H}" role="img" aria-label="Savings left at the end of each year for essentials and ideal budgets">${g}</svg>`
-    + `<div class="legend" style="margin-top:10px"><span><i style="background:var(--c1)"></i>Essentials only</span><span><i style="background:var(--c2)"></i>Ideal lifestyle</span><span><i style="background:repeating-linear-gradient(45deg,var(--ink) 0 2px,transparent 2px 5px)"></i>Striped = your money has run out</span></div>`;
+  el.innerHTML = `<svg class="chart" viewBox="0 0 ${W} ${H}" role="img" aria-label="Savings left at the end of each year, compared with the emergency fund">${g}</svg>`
+    + `<div class="legend" style="margin-top:10px"><span><i style="background:var(--c1)"></i>Your savings at the end of each year</span><span><i class="ln dash" style="border-color:var(--good)"></i>Emergency fund (6 months of spending)</span><span><i style="background:repeating-linear-gradient(45deg,var(--ink) 0 2px,transparent 2px 5px)"></i>Striped = your money has run out</span></div>`;
 }
 
 /* Generic line chart. */
@@ -601,8 +586,8 @@ function lineChart(el, o){
 }
 
 /* ---------- verdicts ---------- */
-function verdict(sim, sc, st){
-  const bud = budgetOf(sc, st), s = assess(sim, sc, bud);
+function verdict(sim, st){
+  const bud = (st || S).spend, s = assess(sim, bud);
   const ageAt = mo => ageText(sim.start + mo - sim.dobIdx[0]);
   const lowAge = ageAt(s.minM+1), end = endLbl(sim);
   if (s.code === 'runs-out'){
@@ -626,8 +611,7 @@ const dobBanner = () => S.dobConfirmed ? '' : `<div class="note"><b>Please enter
 
 /* ---------- "can you afford to retire?" ---------- */
 const netGain = (person, extra) => { const w = (S.work||[0,0]).slice(); w[person] += extra; return simulate({...S, work:w}).months[0].income - simulate(S).months[0].income; };
-function rowFor(sc, r){
-  const bud = budgetOf(sc), name = sc==='e' ? `Essentials only · ${money(S.ess)} a month` : `Your ideal lifestyle · ${money(S.ideal)} a month`;
+function rowFor(r){
   let cls, icon, pill, text;
   if (r.level === 'safe'){
     cls='good'; icon='✓'; pill='Safe';
@@ -641,45 +625,46 @@ function rowFor(sc, r){
     text = `It works if everything goes to plan (lowest point ${money(r.base.min)}). ${why}`;
   } else {
     cls='bad'; icon='✕'; pill='Not yet';
-    text = verdict(simulate(S), sc).text;
+    text = verdict(simulate(S)).text;
   }
-  return `<div class="line"><div class="t">${name}</div>${pillHTML({cls, icon, pill})}<div>${text}</div></div>`;
+  return `<div class="line"><div class="t">Your plan · ${money(S.spend)} a month</div>${pillHTML({cls, icon, pill})}<div>${text}</div></div>`;
 }
-function optionsFor(sc, r){
-  const label = sc==='e' ? 'to be safe on essentials' : 'to be safe on your ideal lifestyle';
+function optionsHTML(){
   const items = [];
   for (const p of [0,1]){
-    const x = neededWork(S, p, sc);
+    const x = neededWork(S, p);
     if (x === null || x === 0) continue;
     items.push(`<li><div><b>${nmx(p)}</b> earns an extra <b>${money(x)} a year</b> before tax (about <b>${money(netGain(p, x))} a month</b> after tax) until their State Pension starts.</div><button type="button" class="btn ghost small" data-try="${p},${x}">Try this in my plan</button></li>`);
   }
-  if (!items.length) return `<h3>Extra income ${label}</h3><p>Extra income on its own would not be enough. You would also need to spend less, or wait longer to retire.</p>`;
-  return `<h3>Extra income ${label}</h3><ul class="opts">${items.join('')}</ul>`;
+  if (!items.length) return `<p>Extra income on its own would not be enough to safely spend ${money(S.spend)} a month. You would also need to spend less, or wait longer to retire.</p>`;
+  return `<ul class="opts">${items.join('')}</ul>`;
 }
 function answerHTML(){
-  const rE = readiness(S,'e'), rI = readiness(S,'i'), sim0 = simulate(S), startAge = Math.floor((sim0.start - sim0.dobIdx[0])/12);
+  const r = readiness(S), m = maxSafeSpend(S), sim0 = simulate(S), startAge = Math.floor((sim0.start - sim0.dobIdx[0])/12);
+  const atCap = m >= MAX_SPEND, room = m - S.spend;
   let cls, mark, head, lead;
-  if (rI.safe){ cls='good'; mark='✓'; head='Yes, you can afford to retire.';
-    lead = `Even on your ideal lifestyle of ${money(S.ideal)} a month, your money lasts, with a safety margin and an emergency fund of ${money(rI.reserve)} kept untouched.`; }
-  else if (rE.safe){ cls='good'; mark='✓'; head='Yes, you can afford to retire on essentials.';
-    lead = `Your essential spending of ${money(S.ess)} a month is covered, with a safety margin and an emergency fund of ${money(rE.reserve)} kept untouched. Your ideal lifestyle of ${money(S.ideal)} a month is not safe yet.`; }
-  else if (rE.level === 'tight'){ cls='warn'; mark='!'; head='You are close, but not safe yet.';
-    lead = `On paper your essential spending is covered. But there is not enough room if bills go up or payments are late, so this app cannot call it safe.`; }
+  if (r.safe){ cls='good'; mark='✓'; head='Yes, you can afford to retire.';
+    lead = `Spending ${money(S.spend)} a month is safe, with an emergency fund of ${money(r.reserve)} kept untouched.` + (room >= 10 ? ` There is room to spend ${money(room)} a month more.` : ''); }
+  else if (r.level === 'tight'){ cls='warn'; mark='!'; head='You are close, but not safe yet.';
+    lead = `At ${money(S.spend)} a month, the plan works on paper but not with the safety margin.` + (m > 0 ? ` Spending ${money(S.spend - m)} a month less would make it safe.` : ` At the moment no level of spending is safe.`); }
   else { cls='bad'; mark='✕'; head='Not yet. Your money would run short.';
-    lead = `Retiring at age ${startAge} on essential spending of ${money(S.ess)} a month would leave you short. Here is what would change that.`; }
-  const targets = [['e', rE], ['i', rI]].filter(([k, r]) => !r.safe);
+    lead = `Retiring at age ${startAge} and spending ${money(S.spend)} a month would leave you short.` + (m > 0 ? ` Spending ${money(S.spend - m)} a month less would be safe.` : ` At the moment no level of spending is safe.`); }
   const work = (S.work||[0,0]).map((x,i) => x > 0 ? `${nmx(i)} ${money(x)} a year` : null).filter(Boolean);
+  const maxbox = m > 0
+    ? `<div class="maxbox"><div class="l">You could safely retire spending up to</div><div class="v">${money(m)}${atCap ? '+' : ''} <span>a month</span></div><div class="l">That is ${money(m*12)} a year, kept safe by an emergency fund of ${money(RESERVE_MONTHS*m)} and the safety margin.</div></div>`
+    : `<div class="maxbox"><div class="l">You could safely retire spending up to</div><div class="v">£0 <span>a month</span></div><div class="l">With the numbers entered, no level of spending passes the safety checks yet.</div></div>`;
   return `<section class="card answer ${cls}" aria-live="polite">
       <div class="big"><span class="mark" aria-hidden="true">${mark}</span><div><h1>${head}</h1><p class="lead" style="margin-top:6px">${lead}</p></div></div>
-      <div class="lines">${rowFor('e', rE)}${rowFor('i', rI)}</div>
+      ${maxbox}
+      <div class="lines">${rowFor(r)}</div>
       ${work.length ? `<div class="info">This plan already includes extra earnings: ${work.join(' and ')}, until State Pension starts. <button type="button" class="btn ghost small" data-clearwork="1">Remove them</button></div>` : ''}
-      ${targets.length ? `<div><h2>You could safely retire if…</h2><p class="small" style="margin:6px 0 10px">Extra income can come from part-time work, a private pension or anything else that is taxed as income. It stops when that person's State Pension starts.</p>${targets.map(([k, r]) => optionsFor(k, r)).join('')}</div>` : ''}
-      <details class="how"><summary>How this app decides if it is safe</summary>
+      ${r.safe ? '' : `<div><h2>You could safely spend ${money(S.spend)} a month if…</h2><p class="small" style="margin:6px 0 10px">Extra income can come from part-time work, a private pension or anything else that is taxed as income. It stops when that person's State Pension starts.</p>${optionsHTML()}</div>`}
+      <details class="how"><summary>How this app decides what is safe</summary>
         <ul class="tidy" style="margin-top:10px">
-          <li>This app keeps an <b>emergency fund</b> of 6 months of essential spending (${money(rE.reserve)}). Your savings must never go below it.</li>
+          <li>This app keeps an <b>emergency fund</b> of 6 months of your spending (${money(r.reserve)} at ${money(S.spend)} a month). Your savings must never go below it.</li>
           <li>This app adds a <b>safety margin</b>. It checks the plan again with your spending 5% higher, your first pension payments a month late, and prices rising 2.5% a year.</li>
           <li>Your money coming in after the State Pensions start must also cover what you spend. Otherwise the savings would run out later.</li>
-          <li>If the plan passes all of that, it is called <b>safe</b>. This is a careful guide, not a promise, and it cannot see future surprises such as big repairs or care costs.</li>
+          <li>If the plan passes all of that, it is called <b>safe</b>. The highest spending that passes is the <b>safe maximum</b> shown above. This is a careful guide, not a promise, and it cannot see future surprises such as big repairs or care costs.</li>
           <li>For free, impartial help, contact MoneyHelper or Pension Wise (both government-backed) before you decide.</li></ul></details>
     </section>`;
 }
@@ -689,8 +674,9 @@ const GLOSSARY = [
   ['Marriage Allowance', 'If one of you pays no tax and the other pays the basic 20% rate, the one who pays no tax can pass £1,260 of their allowance to the other. That saves up to £252 a year. You have to claim it from HMRC.'],
   ['Lump sum', 'A one-off, tax-free payment from a workplace pension when you start taking it.'],
   ['Investment (Stocks & Shares ISA)', 'Money put into shares and funds instead of the bank. Growth and income are tax-free in an ISA. It can go down as well as up.'],
-  ['Emergency fund', 'Money kept aside for surprises, such as a broken boiler or car repair. This app keeps 6 months of essential spending untouched.'],
+  ['Emergency fund', 'Money kept aside for surprises, such as a broken boiler or car repair. This app keeps 6 months of your spending untouched.'],
   ['Safety margin', 'This app tests your plan with spending 5% higher, first pension payments a month late, and prices rising 2.5% a year. If it still works, the plan is called safe.'],
+  ['Safe maximum spending', 'The most you could spend each month, with everything else as you entered it, and still pass the safe test.'],
   ['Today\'s money', 'Every amount is shown as what it would buy today. That way there is no need to guess future prices.'],
   ['National Insurance', 'A payment on earnings from work (8% on earnings above £12,570 a year). You stop paying it when you reach State Pension age. It is not charged on pensions.']
 ];
@@ -715,11 +701,10 @@ pages.plan = {
     <section class="card"><h2>What do these words mean?</h2><div>${glossaryHTML()}</div></section>
     <p class="small">This is a planning guide, not financial advice. The plan looks at ${'<span id="planSpan"></span>'}, in today's money.</p>`; },
   update(){
-    const sim = simulate(S), sc = S.view, v = {e:verdict(sim,'e'), i:verdict(sim,'i')};
+    const sim = simulate(S), v = verdict(sim), s = v.s, bud = S.spend, maxSpend = maxSafeSpend(S);
     $('#dobB').innerHTML = dobBanner();
     $('#answer').innerHTML = answerHTML();
     $('#planSpan').textContent = `${nm(0)}'s retirement up to age ${endLbl(sim)}`;
-    const s = v[sc].s, bud = budgetOf(sc);
     $('#kpis').innerHTML = [
       [money(s.incomeBefore), `Money coming in each month before State Pensions start`, ''],
       [money(s.incomeAfter), `Money coming in each month once State Pensions start`, ''],
@@ -727,17 +712,17 @@ pages.plan = {
     ].map(k => `<div class="card kpi"><div class="v ${k[2]}">${k[0]}</div><div class="l">${k[1]}</div></div>`).join('');
     const gap = bud - s.incomeBefore;
     $('#heroH').textContent = gap > 0
-      ? `Before your State Pensions start, ${money(gap)} a month less comes in than you spend on ${scName(sc)}. Afterwards, ${money(s.incomeAfter-bud)} a month more comes in.`
-      : `Your money coming in covers ${scName(sc)} from the first month, and it grows when your State Pensions start.`;
-    heroChart($('#hero'), sim, sc);
+      ? `Before your State Pensions start, ${money(gap)} a month less comes in than you spend. Afterwards, ${money(s.incomeAfter-bud)} a month more comes in.`
+      : `The money coming in covers your spending from the first month, and it grows when your State Pensions start.`;
+    heroChart($('#hero'), sim, maxSpend);
     const tests = [
       ['Everything goes to plan', {}],
       ['Your first pension payments arrive a month late (pensions are paid after the month they cover)', {payLag:Math.max(S.payLag||0, 1)}],
       ['Prices go up 2.5% a year (the tax-free allowance stays the same until 2031)', {inflation:Math.max(S.inflation, 2.5)}],
-      ['You spend 10% more than planned', {ess:S.ess*1.1, ideal:S.ideal*1.1}],
-      ['All three at once', {payLag:Math.max(S.payLag||0, 1), inflation:Math.max(S.inflation, 2.5), ess:S.ess*1.1, ideal:S.ideal*1.1}]];
-    $('#stressLead').textContent = `This app tested your plan against things that often go wrong, for ${scName(sc)}. A red mark means that problem would leave you short.`;
-    $('#stress').innerHTML = `<table><thead><tr><th>If this happens…</th><th>Lowest your savings fall to</th><th>Result</th></tr></thead><tbody>${tests.map(([lab, o]) => { const st = {...S, ...o}, vv = verdict(simulate(st), sc, st); return `<tr><td style="white-space:normal">${lab}</td><td class="${vv.s.min<0?'neg':''}"><b>${money(vv.s.min)}</b></td><td>${pillHTML(vv)}</td></tr>`; }).join('')}</tbody></table>`;
+      ['You spend 10% more than planned', {spend:S.spend*1.1}],
+      ['All three at once', {payLag:Math.max(S.payLag||0, 1), inflation:Math.max(S.inflation, 2.5), spend:S.spend*1.1}]];
+    $('#stressLead').textContent = `This app tested your plan against things that often go wrong. A red mark means that problem would leave you short.`;
+    $('#stress').innerHTML = `<table><thead><tr><th>If this happens…</th><th>Lowest your savings fall to</th><th>Result</th></tr></thead><tbody>${tests.map(([lab, o]) => { const st = {...S, ...o}, vv = verdict(simulate(st), st); return `<tr><td style="white-space:normal">${lab}</td><td class="${vv.s.min<0?'neg':''}"><b>${money(vv.s.min)}</b></td><td>${pillHTML(vv)}</td></tr>`; }).join('')}</tbody></table>`;
     const f = [];
     f.push(spaLine(sim) + ' Remember to claim it. It does not start by itself.');
     f.push(`You start with <b>${money(sim.buf0)}</b> in savings. It pays for the difference between what comes in and what you spend.`);
@@ -757,18 +742,17 @@ pages.pot = {
     <div><h1>Your savings</h1><p class="lead" style="margin-top:6px">Your savings pay for the difference between the money coming in and what you spend. They go down in the years before your State Pensions start, then build up again.</p></div>
     <div id="dobB"></div>
     <section class="card"><h2 id="potH"></h2><div id="pot"></div></section>
-    <section class="card"><h2>Year by year</h2><p class="small" id="tblNote"></p><div class="tablewrap" id="tbl"></div></section>`; },
+    <section class="card"><h2>Year by year</h2><div class="tablewrap" id="tbl"></div></section>`; },
   update(){
-    const sim = simulate(S), e = verdict(sim,'e'), i = verdict(sim,'i');
+    const sim = simulate(S), v = verdict(sim);
     $('#dobB').innerHTML = dobBanner();
-    const h = k => { const v = k==='e'?e:i; return v.s.runOut>=0 ? `run out at age ${ageText(sim.start+v.s.runOut+1-sim.dobIdx[0])}` : 'never run out'; };
-    $('#potH').textContent = `If you spend only on essentials, your savings ${h('e')}. On your ideal lifestyle, they ${h('i')}.`;
+    $('#potH').textContent = v.s.runOut >= 0
+      ? `At ${money(S.spend)} a month, your savings run out at age ${ageText(sim.start+v.s.runOut+1-sim.dobIdx[0])}.`
+      : `At ${money(S.spend)} a month, your savings never run out. The lowest they fall to is ${money(v.s.min)}.`;
     potChart($('#pot'), sim);
-    const sc = S.view, bud = budgetOf(sc), other = sc==='e'?'i':'e';
-    $('#tblNote').textContent = `Showing ${sc==='e'?'essentials only':'your ideal lifestyle'} (${money(bud)} a month). Use the switch at the top to change it.`;
-    $('#tbl').innerHTML = `<table><thead><tr><th>Year</th><th>${esc(nm(0))}'s age</th><th>${esc(nm(1))}'s age</th><th>Money in each month</th><th>You spend each month</th><th>Change in savings this year</th><th>Savings at the end of the year</th><th>Savings (${other==='e'?'essentials only':'ideal lifestyle'})</th>${S.invest?'<th>Investment at the end of the year</th>':''}</tr></thead><tbody>`
-      + sim.rows.map((r,k) => { const flow = (r.endBuf[sc]-r.startBuf[sc]);
-        return `<tr><td>Year ${k+1}${r.n<12?' (part year)':''}</td><td>${r.age0}</td><td>${r.page0}</td><td>${money(r.avg)}</td><td>${money(bud)}</td><td class="${flow<0?'neg':'pos'}">${flow<0?'−':'+'}${money(Math.abs(flow))}</td><td class="${r.endBuf[sc]<0?'neg':''}"><b>${money(r.endBuf[sc])}</b></td><td class="${r.endBuf[other]<0?'neg':''}">${money(r.endBuf[other])}</td>${S.invest?`<td>${money(r.isaEnd)}</td>`:''}</tr>`; }).join('')
+    $('#tbl').innerHTML = `<table><thead><tr><th>Year</th><th>${esc(nm(0))}'s age</th><th>${esc(nm(1))}'s age</th><th>Money in each month</th><th>You spend each month</th><th>Change in savings this year</th><th>Savings at the end of the year</th>${S.invest?'<th>Investment at the end of the year</th>':''}</tr></thead><tbody>`
+      + sim.rows.map((r,k) => { const flow = r.endBal - r.startBal;
+        return `<tr><td>Year ${k+1}${r.n<12?' (part year)':''}</td><td>${r.age0}</td><td>${r.page0}</td><td>${money(r.avg)}</td><td>${money(S.spend)}</td><td class="${flow<0?'neg':'pos'}">${flow<0?'−':'+'}${money(Math.abs(flow))}</td><td class="${r.endBal<0?'neg':''}"><b>${money(r.endBal)}</b></td>${S.invest?`<td>${money(r.isaEnd)}</td>`:''}</tr>`; }).join('')
       + `</tbody></table>`;
   }
 };
@@ -778,6 +762,8 @@ pages.whatif = {
     <div><h1>What if…?</h1><p class="lead" style="margin-top:6px">Move the sliders and watch what changes. Whatever you set here is kept, and shows on every page.</p></div>
     <div id="dobB"></div>
     <section class="card">
+      <div class="sliderrow"><div class="top"><label for="sp"><b style="font-size:1.1rem">What you spend each month</b></label><b id="spv"></b></div>
+        <input type="range" id="sp" min="0" max="5000" step="10"><span class="small">Your safe maximum is shown below.</span></div>
       <div class="sliderrow"><div class="top"><label for="w0"><b style="font-size:1.1rem">${nmx(0)} earns extra</b></label><b id="w0v"></b></div>
         <input type="range" id="w0" min="0" max="30000" step="250"><span class="small">Before tax, until their State Pension starts. For example, part-time work.</span></div>
       <div class="sliderrow"><div class="top"><label for="w1"><b style="font-size:1.1rem">${nmx(1)} earns extra</b></label><b id="w1v"></b></div>
@@ -787,37 +773,38 @@ pages.whatif = {
       <div class="sliderrow"><div class="top"><b style="font-size:1.1rem">What happens to the lump sum?</b></div>${modeSeg()}</div>
     </section>
     <section class="card"><label class="check"><input type="checkbox" data-flag="marriage"> Use Marriage Allowance (you are married or in a civil partnership)</label><p id="maTxt"></p></section>
-    <section class="card"><h2 id="wH"></h2><div id="wChart"></div></section>
     <div class="grid3" id="wK"></div>
-    <section class="card"><h2>How much extra would make it safe?</h2><p class="lead" id="needTxt"></p><div class="tablewrap" id="need"></div></section>`; },
+    <section class="card"><h2 id="wH"></h2><div id="wChart"></div></section>
+    <section class="card"><h2>How much extra income would make it safe?</h2><p class="lead" id="needTxt"></p><div class="tablewrap" id="need"></div></section>`; },
   update(){
-    const sc = S.view, base = simulate({...S, extra2:0, work:[0,0]}), cur = simulate(S);
+    const base = simulate({...S, extra2:0, work:[0,0]}), cur = simulate(S);
     const extra = S.extra2 > 0 || (S.work||[0,0]).some(x => x > 0);
     $('#dobB').innerHTML = dobBanner();
+    setVal($('#sp'), Math.min(5000, S.spend)); $('#spv').textContent = money(S.spend) + ' a month';
     [0,1].forEach(i => { setVal($('#w'+i), S.work[i]); $('#w'+i+'v').textContent = money(S.work[i]) + ' a year'; });
     setVal($('#x2'), S.extra2); $('#x2v').textContent = money(S.extra2)+' a year';
     $('#x2m').textContent = `${money(S.extra2/12)} a month before tax. It carries on for life. ${nm(1)} pays 20% tax on anything above ${money(PA_BASE)} a year, counting State Pension.`;
-    const b = summarise(base, sc), c = summarise(cur, sc);
+    const b = summarise(base), c = summarise(cur), ms = maxSafeSpend(S), r = readiness(S);
     $('#wH').textContent = extra
       ? `With the extra income, the lowest your savings fall to moves from ${money(b.min)} to ${money(c.min)}.`
       : `This is your plan as it stands. Move a slider to see what extra income would do.`;
-    const pts = sim => [[(sim.start - sim.dobIdx[0])/12, sim.buf0]].concat(sim.rows.map(r => [r.age1, r.endBuf[sc]]));
+    const pts = sim => [[(sim.start - sim.dobIdx[0])/12, sim.buf0]].concat(sim.rows.map(r => [r.age1, r.endBal]));
     const ser = [{name:'Your plan without extra income', color:'var(--muted)', pts:pts(base), dash:'6 5', width:2.5, short:'Without', hover:false}];
-    if (extra) ser.push({name:'With the extra income', color: sc==='e'?'var(--c1)':'var(--c2)', pts:pts(cur), short:'With extra'});
-    else ser[0].color = sc==='e'?'var(--c1)':'var(--c2)', ser[0].dash = '', ser[0].name = 'Your savings';
+    if (extra) ser.push({name:'With the extra income', color:'var(--c1)', pts:pts(cur), short:'With extra'});
+    else ser[0].color = 'var(--c1)', ser[0].dash = '', ser[0].name = 'Your savings';
     lineChart($('#wChart'), {series:ser, xMin:Math.floor(pts(base)[0][0]), xMax:Math.ceil(cur.endAge), xStep:1, zero:true, xTitle:`${nm(0)}'s age`, endLabels:true, label:'Savings over time'});
     $('#wK').innerHTML = [
+      [money(ms) + (ms >= MAX_SPEND ? '+' : '') + ' a month', 'You could safely spend up to', r.safe ? 'pos' : ''],
       [money(c.min), 'Lowest your savings fall to', c.min<0?'neg':''],
-      [money(c.end), `Savings at age ${endLbl(cur)}`, c.end<0?'neg':''],
-      [c.runOut>=0 ? 'Age '+ageText(cur.start+c.runOut+1-cur.dobIdx[0]) : 'Never', 'Your savings run out at', c.runOut>=0?'neg':'']
+      [money(c.end), `Savings at age ${endLbl(cur)}`, c.end<0?'neg':'']
     ].map(k => `<div class="card kpi"><div class="v ${k[2]}">${k[0]}</div><div class="l">${k[1]}</div></div>`).join('');
     const ma = simulate({...S, marriage:true}), m0 = ma.months[0].mSave, m1 = ma.months[ma.N-1].mSave;
     $('#maTxt').innerHTML = ma.marriageTotal < 1
       ? 'No saving in this plan. It only helps when one of you pays no tax and the other pays the basic 20% rate.'
       : `Saves about <b>${money(m0)}</b> a year before State Pension, <b>${money(m1)}</b> a year after, and <b>${money(ma.marriageTotal)}</b> in total up to age ${endLbl(ma)}. The one with the lower income claims it from HMRC, and it can usually be backdated.`;
-    const cell = (p, sc2) => { const x = neededWork(S, p, sc2); return x === 0 ? 'Already safe' : x === null ? 'Not enough on its own' : `${money(x)} a year (about ${money(netGain(p, x))} a month after tax)`; };
-    $('#need').innerHTML = `<table><thead><tr><th>If this person earns more, until their State Pension starts…</th><th>To be safe on essentials</th><th>To be safe on your ideal lifestyle</th></tr></thead><tbody>${[0,1].map(p => `<tr><td style="white-space:normal">${esc(nm(p))} earns an extra</td><td style="white-space:normal">${cell(p,'e')}</td><td style="white-space:normal">${cell(p,'i')}</td></tr>`).join('')}</tbody></table>`;
-    $('#needTxt').textContent = `The smallest extra yearly income, before tax, that makes your plan safe. Safe means it works with the emergency fund and the safety margin. See Your plan for how this app decides.`;
+    const cell = p => { const x = neededWork(S, p); return x === 0 ? 'Already safe' : x === null ? 'Not enough on its own' : `${money(x)} a year (about ${money(netGain(p, x))} a month after tax)`; };
+    $('#need').innerHTML = `<table><thead><tr><th>If this person earns more, until their State Pension starts…</th><th>To safely spend ${money(S.spend)} a month</th></tr></thead><tbody>${[0,1].map(p => `<tr><td style="white-space:normal">${esc(nm(p))} earns an extra</td><td style="white-space:normal">${cell(p)}</td></tr>`).join('')}</tbody></table>`;
+    $('#needTxt').textContent = `The smallest extra yearly income, before tax, that makes your planned spending safe. Safe means it works with the emergency fund and the safety margin. See Your plan for how this app decides.`;
   }
 };
 
@@ -843,7 +830,7 @@ pages.lump = {
     </section>
     <section class="card"><h2>All three choices side by side</h2><div id="cmp"></div></section>`; },
   update(){
-    const mode = modeOf(S), sim = simulate(S), sc = S.view;
+    const mode = modeOf(S), sim = simulate(S);
     const lump = Math.max(0, S.lump), cashIn = Math.min(Math.max(0, S.emergency), lump), amt = lump - cashIn;
     const income = mode === 'income', wdPlan = income ? amt*S.swr/100 : 0;
     const startAge = (sim.start - sim.dobIdx[0])/12, g = S.growth/100, rc = S.cashReal/100;
@@ -866,7 +853,7 @@ pages.lump = {
     } else {
       const years = sim.rows.length, inv = lumpModel(amt, wdPlan, g, years, crash);
       const ptsInv = inv.pot.map((v,y) => [y===0 ? startAge : sim.rows[y-1].age1, v]);
-      const ptsPot = [[startAge, sim.buf0]].concat(sim.rows.map(r => [r.age1, r.endBuf[sc]]));
+      const ptsPot = [[startAge, sim.buf0]].concat(sim.rows.map(r => [r.age1, r.endBal]));
       const ptsAll = ptsInv.map((p,i) => [p[0], p[1] + ptsPot[i][1]]);
       const last = inv.pot[years], taken = inv.taken[years];
       $('#gH').textContent = `Your ${money(amt)} investment grows to ${money(last)} by age ${end}${income ? `, after paying you ${money(taken)}` : ''}.`;
@@ -875,9 +862,9 @@ pages.lump = {
         {name:'Your savings', color:'var(--c3)', pts:ptsPot, short:'Savings'},
         {name:'Both together', color:'var(--ink)', pts:ptsAll, dash:'6 5', width:2.5, short:'Together'}],
         xMin:Math.floor(startAge), xMax:Math.ceil(sim.endAge), xStep:1, zero:true, endLabels:true, xTitle:`${nm(0)}'s age`, label:'Value of the investment, your savings and the two together over the plan'});
-      $('#gNote').textContent = `Your savings are shown for ${sc==='e'?'essentials only':'your ideal lifestyle'}. Together, your savings and the investment are worth ${money(last + sim.rows[years-1].endBuf[sc])} at age ${end}. This app assumes the investment grows ${S.growth}% a year after prices rise, so these amounts are in today's money.${crash ? ' This includes a 25% fall in the first year.' : ''}`;
+      $('#gNote').textContent = `Your savings are shown at ${money(S.spend)} a month of spending. Together, your savings and the investment are worth ${money(last + sim.rows[years-1].endBal)} at age ${end}. This app assumes the investment grows ${S.growth}% a year after prices rise, so these amounts are in today's money.${crash ? ' This includes a 25% fall in the first year.' : ''}`;
       $('#gTbl').innerHTML = `<table><thead><tr><th>Year</th><th>${esc(nm(0))} age</th><th>Investment at start</th><th>Growth</th>${income?'<th>Paid to you</th>':''}<th>Investment at end</th><th>Your savings</th><th>Savings + investment</th></tr></thead><tbody>`
-        + sim.rows.map((r,y) => { const st = inv.pot[y], en = inv.pot[y+1], tk = inv.taken[y+1] - inv.taken[y], pot = r.endBuf[sc];
+        + sim.rows.map((r,y) => { const st = inv.pot[y], en = inv.pot[y+1], tk = inv.taken[y+1] - inv.taken[y], pot = r.endBal;
           return `<tr><td>Year ${y+1}</td><td>${r.age0}</td><td>${money(st)}</td><td class="pos">+${money(en - st + tk)}</td>${income?`<td>${money(tk)}</td>`:''}<td><b>${money(en)}</b></td><td class="${pot<0?'neg':''}">${money(pot)}</td><td class="${en+pot<0?'neg':''}">${money(en + pot)}</td></tr>`; }).join('') + `</tbody></table>`;
     }
 
@@ -914,9 +901,9 @@ pages.lump = {
 
     /* --- all three choices through the whole plan --- */
     const opts = [['cash','Keep it all as cash',{invest:false}], ['grow','Split it, let the investment grow',{invest:true, drawdown:false}], ['income','Split it, take a yearly income',{invest:true, drawdown:true}]];
-    $('#cmp').innerHTML = `<p class="lead">What each choice does to your plan, using the growth you chose above. The last two columns add the investment to your savings at age ${end}.</p><div class="tablewrap"><table><thead><tr><th></th><th>Lowest savings (essentials)</th><th>Lowest savings (ideal)</th><th>Investment at ${end}</th><th>Savings + investment (essentials)</th><th>Savings + investment (ideal)</th></tr></thead><tbody>`
-      + opts.map(([k, lab, o]) => { const sm = simulate({...S, ...o}), e = summarise(sm,'e'), i = summarise(sm,'i'), iv = sm.isaPot[sm.isaPot.length-1];
-        return `<tr style="${k===mode?'font-weight:700;background:var(--accent-soft)':''}"><td>${lab}${k===mode?' (your choice)':''}</td><td class="${e.min<0?'neg':''}">${money(e.min)}</td><td class="${i.min<0?'neg':''}">${money(i.min)}</td><td>${money(iv)}</td><td class="${e.end+iv<0?'neg':''}">${money(e.end+iv)}</td><td class="${i.end+iv<0?'neg':''}">${money(i.end+iv)}</td></tr>`; }).join('')
+    $('#cmp').innerHTML = `<p class="lead">What each choice does to your plan, using the growth you chose above. "Savings + investment" adds the investment to your savings at age ${end}. The last column is the most you could safely spend each month.</p><div class="tablewrap"><table><thead><tr><th></th><th>Lowest your savings fall to</th><th>Investment at ${end}</th><th>Savings + investment at ${end}</th><th>You could safely spend up to</th></tr></thead><tbody>`
+      + opts.map(([k, lab, o]) => { const st = {...S, ...o}, sm = simulate(st), x = summarise(sm), iv = sm.isaPot[sm.isaPot.length-1], ms = maxSafeSpend(st);
+        return `<tr style="${k===mode?'font-weight:700;background:var(--accent-soft)':''}"><td>${lab}${k===mode?' (your choice)':''}</td><td class="${x.min<0?'neg':''}">${money(x.min)}</td><td>${money(iv)}</td><td class="${x.end+iv<0?'neg':''}">${money(x.end+iv)}</td><td><b>${money(ms)}${ms>=MAX_SPEND?'+':''} a month</b></td></tr>`; }).join('')
       + `</tbody></table></div>`;
   }
 };
@@ -937,8 +924,7 @@ pages.numbers = {
       <section class="card" id="live"></section>
       ${person(0)}${person(1)}
       <section class="card"><h2>What you spend</h2><div class="fields">
-        ${num('ess','Essentials, per month','The things you must pay for: bills, food, housing, travel.','£')}
-        ${num('ideal','Ideal lifestyle, per month','Essentials plus holidays, gifts and treats.','£')}</div></section>
+        ${num('spend','Spending, per month','What you plan to spend each month, everything included: bills, food, housing, travel, holidays and treats. This app works out the most you could safely spend.','£')}</div></section>
       <section class="card"><h2>Savings and the lump sum</h2><div class="fields">
         ${num('cash','Savings today','Money you can get at easily, such as bank accounts.','£')}
         ${num('lump','Tax-free lump sum','A one-off, tax-free payment when '+esc(nm(0))+' retires.','£')}
@@ -960,7 +946,7 @@ pages.numbers = {
         <li><b>Marriage Allowance</b> (if switched on) only counts in months when one of you has income at or below the allowance and the other pays the basic rate. The one who gives up allowance may start to pay a little tax, so it is only used when it saves money overall.</li>
         <li><b>State Pension age</b> comes from your date of birth, using the current rules for England, Wales and Northern Ireland: 66 if born up to 5 April 1960, rising to 67 for those born from 6 March 1961, and 68 for those born from 6 April 1977.</li>
         <li>The plan runs until ${esc(nm(0))} is ${END_AGE}, or until 3 years after the later State Pension starts, whichever is later. Only the Lump sum page looks further, to age 90. If the money coming in is still below what you spend at the end, the app tells you when your savings would run out.</li>
-        <li><b>Safe to retire</b> means the plan still works after: an emergency fund of ${RESERVE_MONTHS} months of essential spending is kept untouched; spending is ${Math.round(SPEND_MARGIN*100)}% higher; first pension payments are a month late; and prices rise 2.5% a year. The money coming in after the State Pensions start must also cover what you spend.</li>
+        <li><b>Safe to retire</b> means the plan still works after: an emergency fund of ${RESERVE_MONTHS} months of your spending is kept untouched; spending is ${Math.round(SPEND_MARGIN*100)}% higher; first pension payments are a month late; and prices rise 2.5% a year. The money coming in after the State Pensions start must also cover what you spend. The <b>safe maximum</b> is the highest monthly spending that still passes this test. The app finds it by trying higher and lower amounts.</li>
         <li><b>What this app leaves out:</b> one-off costs such as a new car, care costs, moving house, and changes to the rules. Income and tax are worked out month by month at the yearly rate, which can slightly overstate tax in the year a State Pension starts. Pensions start in the month of the birthday. The investment income stops if the investment would run out.</li>
         <li>This is a planning guide, not financial advice. Check pension amounts with your pension scheme and State Pension ages on gov.uk. For free, impartial help, contact MoneyHelper or Pension Wise (both government-backed).</li></ul></section>
       <section class="card"><h2>Start again</h2><p>Put every number back to the starting values. This clears anything you have typed.</p><div><button class="btn ghost" id="reset" type="button">Reset to the starting numbers</button></div></section>`; },
@@ -970,12 +956,13 @@ pages.numbers = {
     setVal($('#isaOut'), Math.max(0, S.lump - Math.min(S.emergency, S.lump)));
     const sim = simulate(S);
     [0,1].forEach(i => $('#spa'+i).innerHTML = `You can claim State Pension from age ${ageText(sim.spaAge[i])} (${monthName(sim.spaIdx[i])}).` + (S.dob[i] < '1954-10-06' ? ` <b class="neg">Born before 6 October 1954: different rules apply and are not included here.</b>` : ''));
-    $('#live').innerHTML = `<h2>Where you stand so far</h2><div class="lines">${rowFor('e', readiness(S,'e'))}${rowFor('i', readiness(S,'i'))}</div>`;
+    const ms = maxSafeSpend(S);
+    $('#live').innerHTML = `<h2>Where you stand so far</h2><p class="bigtext">You could safely spend up to <b>${money(ms)}${ms>=MAX_SPEND?'+':''} a month</b>.</p><div class="lines">${rowFor(readiness(S))}</div>`;
   },
   bind(){
     $('#reset').addEventListener('click', () => {
       const b = $('#reset');
-      if (b.dataset.sure){ const keep = S.view; Object.assign(S, defaultState(), {view:keep, tourSeen:true}); save(); render(); return; }
+      if (b.dataset.sure){ Object.assign(S, defaultState(), {tourSeen:true}); save(); render(); return; }
       b.dataset.sure = 1; b.textContent = 'Tap again to confirm'; b.className = 'btn danger';
       setTimeout(() => { if (b.isConnected){ delete b.dataset.sure; b.textContent = 'Reset to the starting numbers'; b.className = 'btn ghost'; } }, 5000);
     });
@@ -1036,13 +1023,10 @@ const TOUR = [
   {id:'work', title:() => 'Will either of you work part-time after retiring?', body:() => `
     <p>This is optional. Enter what each of you would earn in a year before tax. It stops when that person's State Pension starts. Leave both at £0 if you will not work.</p>
     <div class="fields">${tnum('work.0',`${esc(nm(0))}: yearly earnings`,'','£')}${tnum('work.1',`${esc(nm(1))}: yearly earnings`,'','£')}</div>`},
-  {id:'ess', title:() => 'What do you spend each month on the things you must pay for?', body:() => `
-    <p>Think of bills and costs you cannot do without: housing, council tax, gas and electricity, water, food, transport, insurance, phone and internet, medicines.</p>
-    ${tnum('ess','Essential spending, per month','','£')}
-    ${where('Add up the last 3 months of your bank statements, leaving out holidays and treats, then divide by 3.')}`},
-  {id:'ideal', title:() => 'What would you like to spend each month?', body:() => `
-    <p>This is your ideal lifestyle: everything in your essentials, plus holidays, eating out, gifts, hobbies and treats.</p>
-    ${tnum('ideal','Ideal spending, per month','','£')}`},
+  {id:'spend', title:() => 'What do you expect to spend each month?', body:() => `
+    <p>Think of everything: housing, council tax, gas and electricity, water, food, transport, insurance, phone and internet, medicines, and also holidays, eating out, gifts and treats.</p>
+    ${tnum('spend','Spending, per month','A rough figure is fine. The app works out the most you could safely spend.','£')}
+    ${where('Add up the last 3 months of your bank statements, then divide by 3. Add a little for holidays and treats you plan to enjoy.')}`},
   {id:'cash', title:() => 'How much do you have in savings today?', body:() => `
     <p>Count money you could get at quickly, such as bank and building society accounts. Do not count money inside a pension.</p>
     ${tnum('cash','Savings today','','£')}`},
@@ -1071,7 +1055,7 @@ const TOUR = [
     <details class="how"><summary>Check what you entered</summary><ul class="tidy" style="margin-top:10px">
       <li>${nmx(0)} born ${esc(S.dob[0])}, retires at ${S.pensionAge[0]}, pension ${money(S.pension[0])} a year, State Pension ${money(S.sp[0])} a year.</li>
       <li>${nmx(1)} born ${esc(S.dob[1])}, pension ${money(S.pension[1])} a year from age ${S.pensionAge[1]}, State Pension ${money(S.sp[1])} a year.</li>
-      <li>Spending: ${money(S.ess)} a month on essentials, ${money(S.ideal)} a month for your ideal lifestyle.</li>
+      <li>Spending: ${money(S.spend)} a month.</li>
       <li>Savings ${money(S.cash)}. Lump sum ${money(S.lump)}.${S.marriage ? ' Marriage Allowance is on.' : ''}</li></ul></details>
     <p class="small">You can change any number later on the Your numbers page, or take the tour again from the top of the page.</p>`}
 ];
@@ -1174,15 +1158,12 @@ function render(){
   current = pages[h] ? h : 'plan';
   document.querySelectorAll('#tabs a').forEach(a => a.setAttribute('aria-current', a.dataset.p===current ? 'page' : 'false'));
   $('#main').innerHTML = pages[current].build();
-  $('#subbar').hidden = !['plan','pot','whatif'].includes(current);
   bindCommon();
   if (pages[current].bind) pages[current].bind();
   refresh();
   window.scrollTo(0,0);
 }
 function refresh(){
-  $('#vE').setAttribute('aria-pressed', S.view==='e'); $('#vI').setAttribute('aria-pressed', S.view==='i');
-  $('#viewAmt').textContent = money(budgetOf(S.view)) + ' a month';
   $('#brandSub').textContent = `${nm(0)} and ${nm(1)}`;
   document.querySelectorAll('input[data-flag]').forEach(el => { el.checked = !!S[el.dataset.flag]; });
   document.querySelectorAll('.modeBtn').forEach(b => b.setAttribute('aria-pressed', b.dataset.mode === modeOf(S)));
@@ -1209,6 +1190,7 @@ function bindCommon(){
   bindNum('amtCash', v => S.emergency = clamp(v));
   bindNum('swr',     v => S.swr = isFinite(v) ? Math.max(0, v) : 0);
   [0,1].forEach(i => { const el = $('#w'+i); if (el) el.addEventListener('input', () => { S.work[i] = +el.value; save(); refresh(); }); });
+  const spn = $('#sp'); if (spn) spn.addEventListener('input', () => { S.spend = +spn.value; save(); refresh(); });
   const x2 = $('#x2'); if (x2) x2.addEventListener('input', () => { S.extra2 = +x2.value; save(); refresh(); });
   ['gr','cr'].forEach(id => { const el = $('#'+id); if (el) el.addEventListener('input', () => { if (id==='gr') S.growth = +el.value; else S.cashReal = +el.value; save(); refresh(); }); });
   const st = $('#stress'); if (st) st.addEventListener('change', () => refresh());
@@ -1219,8 +1201,6 @@ document.addEventListener('click', e => {
   if (e.target.closest && e.target.closest('[data-clearwork]')){ S.work = [0,0]; save(); refresh(); return; }
 });
 document.addEventListener('click', e => { const b = e.target.closest && e.target.closest('.modeBtn'); if (b){ const m = b.dataset.mode; S.invest = m !== 'cash'; if (m !== 'cash') S.drawdown = (m === 'income'); save(); refresh(); } });
-$('#vE').addEventListener('click', () => { S.view = 'e'; save(); refresh(); });
-$('#vI').addEventListener('click', () => { S.view = 'i'; save(); refresh(); });
 window.addEventListener('hashchange', render);
 let rt; window.addEventListener('resize', () => { clearTimeout(rt); rt = setTimeout(() => { if (['plan','pot','whatif','lump'].includes(current)) refresh(); }, 150); });
 load(); render();
