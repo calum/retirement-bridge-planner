@@ -1,6 +1,6 @@
 // Run: node tests/engine.test.js
 const H = require('./harness.js');
-const {simulate, summarise, assess, readiness, neededWork, stressedState, NI_RATE, NI_THRESHOLD, RESERVE_MONTHS, SPEND_MARGIN, maxSafeSpend, MAX_SPEND, lumpModel, spaMonths, monthIdx, defaultState, assert, t, near, done, rng, money, axisMoney, ageText, PA_BASE, HR_THRESHOLD, PA_FREEZE_END, END_AGE} = H;
+const {simulate, summarise, assess, readiness, neededWork, stressedState, NI_RATE, NI_THRESHOLD, RESERVE_MONTHS, SPEND_MARGIN, maxSafeSpend, MAX_SPEND, lumpModel, spaMonths, monthIdx, defaultState, dateAtAge, assert, t, near, done, rng, money, axisMoney, ageText, PA_BASE, HR_THRESHOLD, PA_FREEZE_END, END_AGE} = H;
 
 // A tidy test scenario: both born 15 Oct 1966, retirement month = "now", so the plan starts at age 60
 // and both State Pensions begin exactly 84 months in. Money values are made up.
@@ -8,7 +8,7 @@ const NOW = monthIdx('2026-10-15');
 function base(over){
   return Object.assign(defaultState(), {
     dob:['1966-10-15','1966-10-15'], dobConfirmed:true,
-    pension:[14000,0], pensionAge:[60,55], sp:[12547.60,9000],
+    pension:[14000,0], pensionDate:['2026-10-15','2021-10-15'], sp:[12547.60,9000],
     spend:1600, cash:25000, lump:21000, emergency:2000, swr:4, invest:true,
     inflation:0, cashReal:0, growth:3, marriage:false, extra2:0
   }, over||{});
@@ -67,7 +67,7 @@ t('hand calc: Marriage Allowance is capped by the tax actually owed', () => {
 });
 t('hand calc: giver close to the allowance loses part of the saving', () => {
   // Person 2 has 12,000 of pension: giving 1,260 leaves them 690 taxable = 138 tax. Net saving 252-138 = 114.
-  const s = run({pension:[20000,12000], pensionAge:[60,55], sp:[0,0], marriage:true});
+  const s = run({pension:[20000,12000], pensionDate:['2026-10-15','2021-10-15'], sp:[0,0], marriage:true});
   near(s.months[0].tax[1], 138, 1e-9); near(s.months[0].mSave, 114, 1e-9);
   near(s.months[0].tax[0], 1486 - 252, 1e-9);
 });
@@ -85,7 +85,7 @@ t('Marriage Allowance is not available to a higher-rate taxpayer', () => {
   const e = run({pension:[HR_THRESHOLD,0], sp:[0,0], marriage:true}); near(e.months[0].mSave, 252);
 });
 t('Marriage Allowance works whichever partner is the taxpayer', () => {
-  const a = run({pension:[0,20000], pensionAge:[60,55], sp:[0,0], marriage:true}); near(a.months[0].mSave, 252);
+  const a = run({pension:[0,20000], pensionDate:['2026-10-15','2021-10-15'], sp:[0,0], marriage:true}); near(a.months[0].mSave, 252);
   near(a.months[0].tax[1], 1486-252);
 });
 
@@ -194,7 +194,7 @@ t('plan runs to age 70 and rows count matches', () => {
   assert.strictEqual(s.rows[0].age0, 60); assert.strictEqual(s.rows[9].age0, 69); near(s.rows[9].age1, END_AGE);
 });
 t('plan starts today if retirement date has passed, and still ends at age 70', () => {
-  const s = simulate(base({dob:['1960-04-05','1960-04-05'], pensionAge:[60,55]}), {nowIdx:monthIdx('2022-04-15')}); // age 62
+  const s = simulate(base({dob:['1960-04-05','1960-04-05'], pensionDate:['2020-04-05','2015-04-05']}), {nowIdx:monthIdx('2022-04-15')}); // age 62
   near(s.N, 8*12); near(s.rows[0].age0, 62);
 });
 t('State Pension arrives in the right month for each person', () => {
@@ -205,11 +205,11 @@ t('State Pension arrives in the right month for each person', () => {
   near(s.months[83].q[0], 0); near(s.months[84].q[0], 10000);
 });
 t('Person 2 pension that starts later does not count before its start age', () => {
-  const s = run({pension:[0,6000], pensionAge:[60,63], sp:[0,0], invest:false});
+  const s = run({pension:[0,6000], pensionDate:['2026-10-15','2029-10-15'], sp:[0,0], invest:false});
   near(s.months[35].p[1], 0); near(s.months[36].p[1], 6000);
 });
 t('State Pension age 66 vs 67 shifts the bridge by exactly one year', () => {
-  const six = simulate(base({dob:['1960-04-05','1960-04-05']}), {nowIdx:monthIdx('1960-04-05')+720});
+  const six = simulate(base({dob:['1960-04-05','1960-04-05'], pensionDate:['2020-04-05','2015-04-05']}), {nowIdx:monthIdx('1960-04-05')+720});
   const sev = run();
   near(six.spaM[0], 72); near(sev.spaM[0], 84);
 });
@@ -295,10 +295,11 @@ const pick = (lo, hi) => lo + (hi - lo) * R();
 function randomState(){
   const yr = Math.floor(pick(1955, 1985));
   const d = () => yr + Math.floor(pick(-3, 4)) + '-' + String(1 + Math.floor(R()*12)).padStart(2,'0') + '-' + String(1 + Math.floor(R()*28)).padStart(2,'0');
+  const d0 = d(), d1 = d();
   return Object.assign(defaultState(), {
-    dob:[d(), d()], dobConfirmed:true,
+    dob:[d0, d1], dobConfirmed:true,
     pension:[R()<.1?0:Math.round(pick(0,45000)), R()<.4?0:Math.round(pick(0,30000))],
-    pensionAge:[Math.round(pick(55,66)), Math.round(pick(55,67))],
+    pensionDate:[dateAtAge(d0, Math.round(pick(55,66))), dateAtAge(d1, Math.round(pick(55,67)))],
     sp:[Math.round(pick(0,12600)), Math.round(pick(0,12600))],
     spend:Math.round(pick(500,3000)),
     cash:Math.round(pick(0,80000)), lump:Math.round(pick(0,60000)), emergency:Math.round(pick(0,8000)),
@@ -574,7 +575,7 @@ t('lowest balance from the end of the first year ignores the first eleven months
 });
 t('safe to retire: going below zero early is never safe, even if a large income arrives before the end of year one', () => {
   // No savings. Person 2's big pension only starts six months in, so the first months are overdrawn.
-  const s = base({cash:0, lump:0, emergency:0, dob:['1966-10-15','1967-04-15'], pension:[0,100000], pensionAge:[60,60], sp:[0,0], work:[0,0], spend:1600});
+  const s = base({cash:0, lump:0, emergency:0, dob:['1966-10-15','1967-04-15'], pension:[0,100000], pensionDate:['2026-10-15','2027-04-15'], sp:[0,0], work:[0,0], spend:1600});
   const r = readiness(s, {nowIdx:NOW});
   assert(r.stressed.runOut >= 0, 'overdrawn in the first months'); assert(r.stressed.minLater >= r.reserve, 'but comfortably above the fund after year one');
   assert(!r.safe); assert.strictEqual(r.level, 'no');
@@ -582,10 +583,26 @@ t('safe to retire: going below zero early is never safe, even if a large income 
 t('close but not safe: the plan as entered is judged on the spending entered, not the 5% higher figure', () => {
   // Income 1,025 a month for life (12,300 a year, under the tax-free allowance), spending 1,000: a small surplus, no savings.
   // As entered it works (so "tight", not "no"). With spending 5% higher (1,050) the first month is already short.
-  const s = base({cash:0, lump:0, emergency:0, invest:false, pension:[0,12300], pensionAge:[60,55], sp:[0,0], work:[0,0], spend:1000});
+  const s = base({cash:0, lump:0, emergency:0, invest:false, pension:[0,12300], pensionDate:['2026-10-15','2021-10-15'], sp:[0,0], work:[0,0], spend:1000});
   const r = readiness(s, {nowIdx:NOW});
   assert(r.base.runOut < 0, 'works as entered'); assert(r.base.endFlow > 0, 'income above spending'); assert(r.stressed.runOut >= 0, 'short with the margin');
   assert.strictEqual(r.level, 'tight');
+});
+
+
+
+/* ---------- retirement date ---------- */
+t('retirement date: a date part-way through a year starts the plan in that month', () => {
+  // Retiring 15 Apr 2027 (6 months after NOW, Oct 2026): the plan starts 6 months later than "now", and the pension begins in its first month.
+  const s = run({pensionDate:['2027-04-15','2027-04-15'], pension:[14000,0], sp:[0,0], work:[0,0]});
+  assert.strictEqual(s.start, monthIdx('2027-04-15'));
+  assert.strictEqual(s.retire, monthIdx('2027-04-15'));
+  assert(s.months[0].p[0] > 0, 'pension paid in the first month');
+});
+t('retirement date: dateAtAge keeps day and month, and moves 29 Feb to 28 Feb in a year with no 29 Feb', () => {
+  assert.strictEqual(dateAtAge('1966-10-15', 60), '2026-10-15');
+  assert.strictEqual(dateAtAge('1964-02-29', 61), '2025-02-28');
+  assert.strictEqual(dateAtAge('1964-02-29', 60), '2024-02-29');
 });
 
 done('engine tests');

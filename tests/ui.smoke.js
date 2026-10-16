@@ -160,6 +160,15 @@ const t = async (n, f) => { try { await f(); pass++; } catch (e) { fail++; conso
     await p.goto(url + '#numbers'); await p.evaluate(k => localStorage.setItem(k, JSON.stringify({ess:1700})), key);
     const p2 = await c.newPage(); await p2.goto(url); await p2.waitForTimeout(250);
     assert(!/#tour/.test(p2.url())); assert(await p2.locator('#answer').count() === 1); await c.close(); });
+  await t('an older save with a retirement age is turned into a retirement date', async () => {
+    const c = await b.newContext({viewport:{width:1000,height:900}}), p = await c.newPage();
+    await p.goto(url + '#numbers');
+    await p.evaluate(k => localStorage.setItem(k, JSON.stringify({tourSeen:true, dobConfirmed:true, dob:['1966-10-15','1961-02-10'], pensionAge:[62,57]})), key);
+    await p.reload(); await p.waitForTimeout(200);
+    assert.strictEqual(await p.inputValue('[data-key="pensionDate.0"]'), '2028-10-15');
+    assert.strictEqual(await p.inputValue('[data-key="pensionDate.1"]'), '2018-02-10');
+    await p.fill('[data-key="pensionDate.0"]', '2029-03-08'); await p.waitForTimeout(100);
+    const st = await saved(p); assert.strictEqual(st.pensionDate[0], '2029-03-08'); assert.strictEqual(st.pensionAge, undefined); await c.close(); });
   await t('the tour walks through every field, one question at a time, and saves each answer', async () => {
     const c = await b.newContext({viewport:{width:1000,height:900}}), p = await c.newPage(); const errs2 = []; p.on('pageerror', e => errs2.push(String(e)));
     await p.goto(url); await p.waitForTimeout(200);
@@ -169,9 +178,9 @@ const t = async (n, f) => { try { await f(); pass++; } catch (e) { fail++; conso
     await p.fill('[data-key="names.0"]', 'Alex'); await p.fill('[data-key="names.1"]', 'Sam'); await step();
     assert(/Alex/.test(await head())); await p.fill('[data-key="dob.0"]', '1966-10-15'); assert(/age 67/.test(await p.locator('#tourSpa0').innerText())); await step();
     assert(/Sam/.test(await head())); await p.fill('[data-key="dob.1"]', '1961-02-10'); assert(/age 66 and 11 months/.test(await p.locator('#tourSpa1').innerText())); await step();
-    await p.click('[data-set="pensionAge.0,65"]'); assert.strictEqual(await p.inputValue('[data-key="pensionAge.0"]'), '65'); await step();
+    await p.click('[data-setage="pensionDate.0,65"]'); assert.strictEqual(await p.inputValue('[data-key="pensionDate.0"]'), '2031-10-15'); await p.fill('[data-key="pensionDate.0"]', '2031-12-03'); await step();
     await p.fill('[data-key="pension.0"]', '14000'); await step();
-    await p.fill('[data-key="pension.1"]', '3000'); await p.fill('[data-key="pensionAge.1"]', '57'); await step();
+    await p.fill('[data-key="pension.1"]', '3000'); await p.fill('[data-key="pensionDate.1"]', '2018-05-20'); await step();
     await p.click('[data-set="sp.0,12547.6"]'); assert.strictEqual(await p.inputValue('[data-key="sp.0"]'), '12547.6'); await step();
     await p.fill('[data-key="sp.1"]', '9000'); await step();
     await p.fill('[data-key="work.0"]', '5000'); await step();
@@ -183,7 +192,7 @@ const t = async (n, f) => { try { await f(); pass++; } catch (e) { fail++; conso
     assert(/All done/.test(await head())); assert(await p.locator('#answer, .answer').count() >= 1); assert(/Step (\d+) of \1/.test(await count()));
     await next(); await p.waitForTimeout(150); assert(/#plan$/.test(p.url()));
     const st = await saved(p);
-    assert.deepStrictEqual(st.names, ['Alex','Sam']); assert.deepStrictEqual(st.dob, ['1966-10-15','1961-02-10']); assert.strictEqual(st.pensionAge[0], 65); assert.strictEqual(st.pensionAge[1], 57);
+    assert.deepStrictEqual(st.names, ['Alex','Sam']); assert.deepStrictEqual(st.dob, ['1966-10-15','1961-02-10']); assert.deepStrictEqual(st.pensionDate, ['2031-12-03','2018-05-20']); assert.strictEqual(st.pensionAge, undefined);
     assert.deepStrictEqual(st.pension, [14000, 3000]); assert.deepStrictEqual(st.sp, [12547.6, 9000]); assert.strictEqual(st.work[0], 5000);
     assert.strictEqual(st.spend, 1600); assert.strictEqual(st.cash, 25000); assert.strictEqual(st.lump, 20000);
     assert.strictEqual(st.emergency, 5000); assert.strictEqual(st.invest, true); assert.strictEqual(st.drawdown, false); assert.strictEqual(st.marriage, true); assert.strictEqual(st.tourSeen, true);

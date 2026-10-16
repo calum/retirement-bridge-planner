@@ -227,6 +227,8 @@ const STRESS_INFLATION = 2.5; // prices up 2.5% a year (the tax-free allowance i
 function monthIdx(str){ const [y,m] = str.split('-').map(Number); return y*12 + (m-1); }
 function todayStr(){ const d = new Date(); return d.getFullYear()+'-'+String(d.getMonth()+1).padStart(2,'0')+'-'+String(d.getDate()).padStart(2,'0'); }
 function minusYears(str, n){ const [y,m,d] = str.split('-'); return (Number(y)-n)+'-'+m+'-'+d; }
+// The date someone born on `dob` reaches `age` (29 Feb becomes 28 Feb in years with no 29 Feb).
+function dateAtAge(dob, age){ const [y,m,d] = dob.split('-'), yy = Number(y)+age, leap = yy%4===0 && (yy%100!==0 || yy%400===0); return yy+'-'+m+'-'+((m==='02' && d==='29' && !leap) ? '28' : d); }
 
 // State Pension age in months, England/Wales/NI rules for people born from 1954.
 // Born up to 5 Apr 1960: 66. 6 Apr 1960 to 5 Mar 1961: 66 plus 1-11 months. 6 Mar 1961 to 5 Apr 1977: 67. After: 68.
@@ -243,7 +245,7 @@ function defaultState(){
   return {
     names:['Person 1','Person 2'],
     dob:[minusYears(todayStr(),60), minusYears(todayStr(),60)], dobConfirmed:false,
-    pension:[15000,0], pensionAge:[60,57], sp:[12547.60,12547.60],
+    pension:[15000,0], pensionDate:[todayStr(), minusYears(todayStr(),3)], sp:[12547.60,12547.60],
     spend:1500,
     cash:20000, lump:20000, emergency:2000, swr:4, invest:true, drawdown:true,
     inflation:0, cashReal:0, growth:3, marriage:false, payLag:0,
@@ -255,11 +257,11 @@ function simulate(s, o){
   o = o || {};
   const nowIdx = o.nowIdx != null ? o.nowIdx : monthIdx(todayStr());
   const dobIdx = s.dob.map(monthIdx);
-  const retire = dobIdx[0] + s.pensionAge[0]*12;
+  const retire = monthIdx(s.pensionDate[0]);
   const start = Math.max(retire, nowIdx);
   const spaIdx = s.dob.map((d,i) => dobIdx[i] + spaMonths(d));
   const N = Math.max(12, dobIdx[0] + END_AGE*12 - start, Math.max(spaIdx[0], spaIdx[1]) + COVER_AFTER_SPA - start);
-  const penStart = [retire, dobIdx[1] + s.pensionAge[1]*12];
+  const penStart = [retire, monthIdx(s.pensionDate[1])];
   const pen = [s.pension[0], s.pension[1] + (o.extra2 != null ? o.extra2 : (s.extra2 || 0))];
   const isaAmt = s.invest ? Math.max(0, s.lump - s.emergency) : 0;
   const isaBase = o.legacyIsa ? isaAmt + s.emergency : isaAmt;
@@ -441,6 +443,11 @@ function load(){
   if (saved){ if (saved.spend === undefined && saved.ess !== undefined) saved.spend = saved.ess; delete saved.ess; delete saved.ideal; delete saved.view; }   // older saves had two spending figures
   if (saved && saved.tourSeen === undefined) saved.tourSeen = true;   // anyone with saved numbers has already started
   if (saved && saved.invest !== undefined && saved.drawdown === undefined) saved.drawdown = true;   // older saves always took an income
+  if (saved && saved.pensionAge && !saved.pensionDate){   // older saves stored an age, not a date
+    const dobs = saved.dobConfirmed && saved.dob ? saved.dob : d.dob;
+    saved.pensionDate = [0,1].map(i => /^\d{4}-\d\d-\d\d$/.test(dobs[i]||'') && isFinite(saved.pensionAge[i]) ? dateAtAge(dobs[i], Math.round(saved.pensionAge[i])) : d.pensionDate[i]);
+  }
+  if (saved) delete saved.pensionAge;
   Object.assign(S, d, saved||{});
   if (!S.dobConfirmed) S.dob = d.dob;
 }
@@ -915,7 +922,7 @@ pages.numbers = {
       <div class="field"><label for="f_names.${i}">Name</label><input id="f_names.${i}" data-key="names.${i}" type="text" maxlength="20"><div class="hint">Change "${i===0?'Person 1':'Person 2'}" to a real name if you like.</div></div>
       <div class="field"><label for="f_dob.${i}">Date of birth</label><input id="f_dob.${i}" data-key="dob.${i}" type="date"><div class="hint" id="spa${i}"></div></div>
       ${num('pension.'+i, i===0?'Workplace pension, per year':'Private or workplace pension, per year', i===0?'The yearly amount your pension pays, before tax. It is on your pension statement.':'The yearly amount, before tax. Leave at 0 if there is none or you are not sure.', '£')}
-      ${num('pensionAge.'+i, i===0?'You retire, and your pension starts, at age':'Pension can be taken from age', i===0?'The plan starts on this birthday.':'Most private pensions can be taken from 55 (57 from April 2028).')}
+      <div class="field"><label for="f_pensionDate.${i}">${i===0?'What date would you like to retire?':'Date this pension can be taken from'}</label><input id="f_pensionDate.${i}" data-key="pensionDate.${i}" type="date"><div class="hint">${i===0?'Your pension starts on this date. The plan starts then too.':'Most private pensions can be taken from age 55 (57 from April 2028).'}</div></div>
       ${num('sp.'+i, 'State Pension, per year', 'Get your forecast at gov.uk/check-state-pension. The full new State Pension is £12,547.60 a year in 2026/27.', '£')}
       ${num('work.'+i, 'Part-time earnings, per year (optional)', 'Money from work before tax. It runs from the start of the plan until their State Pension starts. Tax and National Insurance are taken off.', '£')}
       </div></section>`;
@@ -973,7 +980,7 @@ pages.numbers = {
 let tourStep = 0;
 const tnum = (key, label, hint, pre) => `<div class="field"><label for="t_${key}">${label}</label><div class="inp">${pre?`<span>${pre}</span>`:''}<input id="t_${key}" data-key="${key}" type="number" inputmode="decimal" min="0" step="any"></div>${hint?`<div class="hint">${hint}</div>`:''}</div>`;
 const ttext = (key, label) => `<div class="field"><label for="t_${key}">${label}</label><input id="t_${key}" data-key="${key}" type="text" maxlength="20"></div>`;
-const tdate = key => `<div class="field"><label for="t_${key}">Date of birth</label><input id="t_${key}" data-key="${key}" type="date"><div class="hint">Type the day, month and year, or pick it from the calendar.</div></div>`;
+const tdate = (key, label, hint) => `<div class="field"><label for="t_${key}">${label || 'Date of birth'}</label><input id="t_${key}" data-key="${key}" type="date"><div class="hint">${hint || 'Type the day, month and year, or pick it from the calendar.'}</div></div>`;
 const where = t => `<details class="how"><summary>Where do I find this?</summary><p style="margin-top:8px">${t}</p></details>`;
 const chip = (key, val, label) => `<button type="button" class="chip" data-set="${key},${val}">${label}</button>`;
 const spaTour = i => { const sim = simulate(S), el = $('#tourSpa'+i); if (el) el.innerHTML = `${nmx(i)} can claim State Pension from age <b>${ageText(sim.spaAge[i])}</b> (${monthName(sim.spaIdx[i])}).`; };
@@ -998,10 +1005,10 @@ const TOUR = [
     ${tdate('dob.0')}<div class="info" id="tourSpa0"></div>`},
   {id:'dob1', title:() => `When was ${nm(1)} born?`, live:() => spaTour(1), body:() => `
     <p>Same question for ${nmx(1)}.</p>${tdate('dob.1')}<div class="info" id="tourSpa1"></div>`},
-  {id:'ret', title:() => `At what age will ${nm(0)} retire?`, body:() => `
-    <p>The plan starts on this birthday. Many people choose 60 or 65.</p>
-    ${tnum('pensionAge.0','Age when you retire and your pension starts','')}
-    <div class="chips">${chip('pensionAge.0',60,'60')}${chip('pensionAge.0',62,'62')}${chip('pensionAge.0',65,'65')}</div>`},
+  {id:'ret', title:() => `What date would ${nm(0)} like to retire?`, body:() => `
+    <p>The plan starts on this date, and the pension starts then too. Type the day, month and year, or pick it from the calendar. Many people retire at 60 or 65.</p>
+    ${tdate('pensionDate.0','Date you would like to retire')}
+    <div class="chips">${[60,62,65].map(a => `<button type="button" class="chip" data-setage="pensionDate.0,${a}">At age ${a}</button>`).join('')}</div>`},
   {id:'pen0', title:() => `How much will ${nm(0)}'s pension pay each year?`, body:() => `
     <p>This is a workplace pension (for example from a job). Use the yearly amount before tax.</p>
     ${tnum('pension.0','Yearly pension, before tax','Enter 0 if there is none.','£')}
@@ -1009,7 +1016,7 @@ const TOUR = [
   {id:'pen1', title:() => `Does ${nm(1)} have a pension of their own?`, body:() => `
     <p>This could be a workplace or private pension. Leave it at £0 if there is none or you are not sure.</p>
     ${tnum('pension.1','Yearly pension, before tax','','£')}
-    ${tnum('pensionAge.1','Pension can be taken from age','Most private pensions can be taken from 55 (57 from April 2028).')}`},
+    ${tdate('pensionDate.1','Date this pension can be taken from','Most private pensions can be taken from age 55 (57 from April 2028).')}`},
   {id:'sp0', title:() => `How much State Pension will ${nm(0)} get each year?`, body:() => `
     <p>The State Pension is paid by the government once you reach State Pension age.</p>
     ${tnum('sp.0','Yearly State Pension','','£')}
@@ -1053,8 +1060,8 @@ const TOUR = [
   {id:'done', next:'See my full plan', title:() => 'All done. Here is your answer.', body:() => `
     ${answerHTML()}
     <details class="how"><summary>Check what you entered</summary><ul class="tidy" style="margin-top:10px">
-      <li>${nmx(0)} born ${esc(S.dob[0])}, retires at ${S.pensionAge[0]}, pension ${money(S.pension[0])} a year, State Pension ${money(S.sp[0])} a year.</li>
-      <li>${nmx(1)} born ${esc(S.dob[1])}, pension ${money(S.pension[1])} a year from age ${S.pensionAge[1]}, State Pension ${money(S.sp[1])} a year.</li>
+      <li>${nmx(0)} born ${esc(S.dob[0])}, retires on ${esc(S.pensionDate[0])}, pension ${money(S.pension[0])} a year, State Pension ${money(S.sp[0])} a year.</li>
+      <li>${nmx(1)} born ${esc(S.dob[1])}, pension ${money(S.pension[1])} a year from ${esc(S.pensionDate[1])}, State Pension ${money(S.sp[1])} a year.</li>
       <li>Spending: ${money(S.spend)} a month.</li>
       <li>Savings ${money(S.cash)}. Lump sum ${money(S.lump)}.${S.marriage ? ' Marriage Allowance is on.' : ''}</li></ul></details>
     <p class="small">You can change any number later on the Your numbers page, or take the tour again from the top of the page.</p>`}
@@ -1101,6 +1108,8 @@ document.addEventListener('click', e => {
     else if (a === 'skip') tourFinish(); return; }
   const c = e.target.closest && e.target.closest('[data-set]');
   if (c){ const [k, v] = c.dataset.set.split(','); setPath(k, parseFloat(v)); save(); refresh(); return; }
+  const g = e.target.closest && e.target.closest('[data-setage]');
+  if (g){ const [k, a] = g.dataset.setage.split(','), i = +k.split('.')[1]; setPath(k, dateAtAge(S.dob[i], +a)); save(); refresh(); return; }
   const f = e.target.closest && e.target.closest('[data-flagset]');
   if (f){ const [k, v] = f.dataset.flagset.split(','); S[k] = v === '1'; save(); refresh(); return; }
   if (e.target.closest && e.target.closest('.tourlink')) tourStep = 0;
@@ -1177,7 +1186,7 @@ function bindCommon(){
     el.addEventListener('input', () => {
       const k = el.dataset.key;
       if (el.type === 'number'){ let v = parseFloat(el.value); S[k.split('.')[0]] !== undefined && setPath(k, isFinite(v) ? Math.max(0, v) : 0); }
-      else { if (k.startsWith('dob.') && !el.value) return; setPath(k, el.value); if (k.startsWith('dob.')) S.dobConfirmed = true; }
+      else { if ((k.startsWith('dob.') || k.startsWith('pensionDate.')) && !/^\d{4}-\d\d-\d\d$/.test(el.value)) return; setPath(k, el.value); if (k.startsWith('dob.')) S.dobConfirmed = true; }
       save(); refresh();
     });
   });

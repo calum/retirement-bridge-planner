@@ -70,7 +70,7 @@ The calculations are checked in layers. Run `npm test` (plain Node, nothing to i
 - Lump sum: you choose how much goes into the savings pot and how much is invested. The investment grows each year at the growth rate you choose (above inflation). Optionally it also pays a yearly income, which stops if the pot runs out. The investment is shown separately and is not counted as savings in the traffic light.
 - ISA income stops if the ISA pot would run out. First pension payments can be delayed by a set number of months (pensions are paid in arrears).
 - The plan page has stress tests: payments a month late, 2.5% inflation with the allowance frozen, spending 10% higher, and all three.
-- Known simplifications: tax is worked out month by month at the yearly rate (can slightly overstate tax in the year a State Pension starts); pensions start in the month of the birthday; no salary, one-off costs or care costs are modelled.
+- Known simplifications: tax is worked out month by month at the yearly rate (can slightly overstate tax in the year a State Pension starts); pensions start in the month of the date chosen; no salary, one-off costs or care costs are modelled.
 - Figures are in today's money. The allowance is frozen until April 2031, so inflation increases tax.
 
 ## Example figures
@@ -79,8 +79,8 @@ The page opens with round example numbers so each field is easy to recognise. Re
 
 | Field | Example | What it means |
 |---|---|---|
-| Person 1 pension | £15,000 a year from age 60 | Workplace pension, before tax. The plan starts on this birthday |
-| Person 2 pension | £0 from age 57 | Private pension. Most open at 55, or 57 from April 2028 |
+| Person 1 pension | £15,000 a year from the retirement date | Workplace pension, before tax. The plan starts on the date you choose to retire (any day, not just a birthday) |
+| Person 2 pension | £0 from a date you choose | Private pension. Most open at 55, or 57 from April 2028 |
 | State Pensions | £12,547.60 each | Full new State Pension for 2026/27 |
 | Spending | £1,500 a month | Everything you expect to spend: bills, food, housing, travel, holidays and treats |
 | Cash savings | £20,000 | Easy-access savings today |
